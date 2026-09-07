@@ -1,0 +1,43 @@
+# Cấu hình cho integration test.
+#
+# H2 chỉ dùng để kiểm chứng logic claim-first và hành vi unique constraint. Nó
+# KHÔNG chứng minh hành vi trên Oracle: mã lỗi, lock timeout và mức isolation
+# khác nhau. Test tương đương trên database thật vẫn là điều kiện của quality
+# gate (SRD 16.2) và phải chạy lại sau khi chốt OQ-P1-12.
+spring:
+  datasource:
+    url: jdbc:h2:mem:moneybank;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+    hikari:
+      # Lớn hơn số thread trong test đồng thời để hàng đợi connection không bị
+      # nhầm thành lỗi nghiệp vụ.
+      maximum-pool-size: 20
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      # Trong test, schema được sinh từ chính annotation của entity, nên unique
+      # constraint được kiểm chứng đúng như khai báo trong code.
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+money-bank:
+  security:
+    # URL giả: NimbusJwtDecoder tải JWK lazy nên không có lời gọi mạng nào khi
+    # khởi động context. Test nào cần token thật sẽ tự cung cấp decoder riêng.
+    jwk-set-uri: http://localhost:0/realms/test/protocol/openid-connect/certs
+    issuer: http://localhost:0/realms/test
+    audience: money-bank
+  idempotency:
+    result-retention: 1h
+
+logging:
+  level:
+    # Unique constraint violation là đường đi bình thường của claim-first; tắt log
+    # ERROR của Hibernate để output test không gây hiểu nhầm là lỗi.
+    org.hibernate.engine.jdbc.spi.SqlExceptionHelper: OFF

@@ -1,0 +1,36 @@
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: corebank-oracle
+    environment:
+      ORACLE_PASSWORD: oracle_demo
+      APP_USER: corebank
+      APP_USER_PASSWORD: corebank_demo
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  corebank:
+    build:
+      context: .
+    container_name: corebank-api
+    environment:
+      DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
+      DB_USERNAME: corebank
+      DB_PASSWORD: corebank_demo
+    ports:
+      - "${APP_PORT:-8180}:8080"
+    depends_on:
+      oracle:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  oracle-data:

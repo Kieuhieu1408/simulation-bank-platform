@@ -1,0 +1,7 @@
+.git
+.idea
+.mvn
+target
+.DS_Store
+*.iml
+README.md
