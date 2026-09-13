@@ -120,9 +120,19 @@ curl -X POST http://localhost:8180/api/v1/accounts \
 
 Health check: `http://localhost:8180/actuator/health`.
 
-## Nguyên tắc thiết kế
+## Nguyên tắc thiết kế (Cloud-Native & Distributed System)
 
-- Corebank là nơi duy nhất được phép thay đổi số dư.
-- Tạo chuyển tiền và ghi sổ giao dịch trong cùng một database transaction.
-- Dùng optimistic locking hoặc cơ chế tương đương để tránh cập nhật số dư sai khi có giao dịch đồng thời.
-- Các service gọi Corebank qua REST ở MVP; Kafka chỉ phát sự kiện sau khi giao dịch thành công khi cần tích hợp notification/paygate.
+- **Source of Truth & ODS (Read Replica):** Corebank là nơi duy nhất giữ sổ cái kế toán và lịch sử giao dịch. Để chịu tải cho 10 triệu người dùng lướt xem lịch sử mà không sập hệ thống Ledger, Corebank sẽ triển khai mô hình **CQRS nội bộ** thông qua một Cụm Oracle Đọc (Operational Data Store - ODS / Active Data Guard).
+- **Query API cho Vệ tinh:** Các service như `money-bank` đóng vai trò là BFF, sẽ gọi trực tiếp vào API Đọc của Corebank (chọc vào ODS) để lấy lịch sử. Lịch sử không bao giờ được phép copy ra ngoài Corebank.
+- **Race Condition & Locking:** Tạo chuyển tiền và ghi sổ giao dịch trong cùng một database transaction. Bắt buộc dùng Optimistic Locking (hoặc Pessimistic Locking) để khóa dòng số dư.
+- **Idempotency (Luỹ đẳng):** Mọi API thay đổi trạng thái (như `POST /transfers`) phải kiểm tra `idempotencyKey` để chống trừ tiền đúp.
+- **Distributed Transaction:** Corebank nhận request từ Cadence Workflow / Kafka của các service vệ tinh. Dùng Outbox Pattern để báo kết quả.
+- **Database Bottleneck:** Oracle Active Data Guard sẽ giải quyết nút thắt cổ chai cho các tác vụ Query nặng.
+
+## Hướng dẫn Ghi Log & Observability
+> ⚠️ Xem tài liệu đầy đủ tại `../../devOps.md` ở root dự án.
+
+Khi code `corebank`, Dev lưu ý:
+1. Luôn sử dụng `@Slf4j` cho việc ghi log, tránh dùng `System.out.println`.
+2. Truyền đúng `correlationId`, `traceId` và các Context ID khác để liên kết log với các service gọi tới (như Money Bank).
+3. Đảm bảo cấu hình log ra định dạng JSON để agent thu thập về Loki.

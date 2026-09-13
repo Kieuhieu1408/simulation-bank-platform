@@ -10,7 +10,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 public interface TransactionRepository extends JpaRepository<BankTransaction, String> {
-    Optional<BankTransaction> findByIdempotencyKey(String idempotencyKey);
+    BankTransaction findByIdempotencyKey(String idempotencyKey);
 
     @Query("""
         select t from BankTransaction t

@@ -10,8 +10,9 @@ import java.util.Optional;
 import java.util.List;
 
 public interface AccountRepository extends JpaRepository<Account, String> {
-    boolean existsByAccountNumber(String accountNumber);
+
     List<Account> findByCustomerCifNumberOrderByCreatedAtDesc(String cifNumber);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Account a where a.id = :id")
     Optional<Account> findByIdForUpdate(@Param("id") String id);

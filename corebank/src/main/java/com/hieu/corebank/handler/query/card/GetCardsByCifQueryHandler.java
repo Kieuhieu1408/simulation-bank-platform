@@ -1,0 +1,30 @@
+package com.hieu.corebank.handler.query.card;
+
+import com.hieu.common.cqrs.Query;
+import com.hieu.common.cqrs.QueryHandler;
+import com.hieu.corebank.domain.BankCard;
+import com.hieu.corebank.dto.response.CardResponseDTO;
+import com.hieu.corebank.repository.CardRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Component
+@RequiredArgsConstructor
+public class GetCardsByCifQueryHandler implements QueryHandler<GetCardsByCifQueryHandler.GetCardsByCifQuery, List<CardResponseDTO>> {
+
+    public record GetCardsByCifQuery(String cifNumber) implements Query<List<CardResponseDTO>> {
+    }
+
+    private final CardRepository cards;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CardResponseDTO> handle(GetCardsByCifQuery query) {
+        List<BankCard> cardList = cards.findByAccountCustomerCifNumberOrderByCreatedAtDesc(query.cifNumber().toUpperCase());
+        return cardList.stream().map(CardResponseDTO::from).collect(Collectors.toList());
+    }
+}

@@ -2,32 +2,40 @@ package com.hieu.corebank.domain;
 
 import com.hieu.corebank.constant.AccountStatus;
 import jakarta.persistence.*;
+import lombok.Getter;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
+@Getter
 @Entity
 @Table(name = "accounts", uniqueConstraints = @UniqueConstraint(name = "uk_account_number", columnNames = "account_number"))
 public class Account {
+
     @Id
     @Column(length = 36)
     private String id;
+
     @Column(name = "account_number", nullable = false, length = 20)
     private String accountNumber;
+
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "cif_number", nullable = false)
     private Customer customer;
+
     @Column(nullable = false, length = 3)
     private String currency;
+
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal balance;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private AccountStatus status;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
-    @Version
-    private long version;
 
     protected Account() {}
 

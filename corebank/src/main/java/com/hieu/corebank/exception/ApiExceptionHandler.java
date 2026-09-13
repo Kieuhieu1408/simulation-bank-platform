@@ -1,4 +1,4 @@
-package com.hieu.corebank.api;
+package com.hieu.corebank.exception;
 
 import com.hieu.corebank.exception.BusinessException;
 import com.hieu.corebank.exception.NotFoundException;

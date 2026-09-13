@@ -9,9 +9,11 @@ import java.time.Instant;
 @Entity
 @Table(name = "customers", uniqueConstraints = @UniqueConstraint(name = "uk_customer_cif", columnNames = "cif_number"))
 public class Customer {
+
     @Id
     @Column(name = "cif_number", nullable = false, length = 20)
     private String cifNumber;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -21,5 +23,4 @@ public class Customer {
         this.cifNumber = cifNumber;
         this.createdAt = Instant.now();
     }
-
 }

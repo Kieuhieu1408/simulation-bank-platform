@@ -1,43 +1,27 @@
 package com.hieu.corebank.api;
 
-import com.hieu.corebank.api.dto.*;
-import com.hieu.corebank.service.*;
+import com.hieu.corebank.dto.request.CustomerCreateRequestDTO;
+import com.hieu.corebank.dto.response.AccountResponseDTO;
+import com.hieu.corebank.dto.response.CardResponseDTO;
+import com.hieu.corebank.dto.response.CustomerResponseDTO;
 import jakarta.validation.Valid;
-import org.springframework.http.*;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import java.util.List;
 
-@RestController
 @RequestMapping("/api/v1/customers")
-public class CustomerController {
-    private final CustomerService customers;
-    private final AccountService accounts;
-    private final CardService cards;
-
-    public CustomerController(CustomerService customers, AccountService accounts, CardService cards) {
-        this.customers = customers;
-        this.accounts = accounts;
-        this.cards = cards;
-    }
+public interface CustomerController {
 
     @PostMapping
-    public ResponseEntity<CustomerDtos.Response> create(@Valid @RequestBody CustomerDtos.CreateRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(CustomerDtos.Response.from(customers.create(request)));
-    }
+    ResponseEntity<CustomerResponseDTO> create(@Valid @RequestBody CustomerCreateRequestDTO request);
 
     @GetMapping("/{cifNumber}")
-    public CustomerDtos.Response get(@PathVariable String cifNumber) {
-        return CustomerDtos.Response.from(customers.get(cifNumber));
-    }
+    ResponseEntity<CustomerResponseDTO> get(@PathVariable String cifNumber);
 
     @GetMapping("/{cifNumber}/accounts")
-    public List<AccountDtos.Response> accounts(@PathVariable String cifNumber) {
-        return accounts.findByCif(cifNumber).stream().map(AccountDtos.Response::from).toList();
-    }
+    ResponseEntity<List<AccountResponseDTO>> accounts(@PathVariable String cifNumber);
 
     @GetMapping("/{cifNumber}/cards")
-    public List<CardDtos.Response> cards(@PathVariable String cifNumber) {
-        customers.get(cifNumber);
-        return cards.findByCif(cifNumber).stream().map(CardDtos.Response::from).toList();
-    }
+    ResponseEntity<List<CardResponseDTO>> cards(@PathVariable String cifNumber);
 }
