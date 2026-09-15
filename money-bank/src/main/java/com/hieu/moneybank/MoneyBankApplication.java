@@ -2,14 +2,12 @@ package com.hieu.moneybank;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
-@ConfigurationPropertiesScan
+@ComponentScan(basePackages = {"com.hieu.moneybank", "com.hieu.common"})
 public class MoneyBankApplication {
-
     public static void main(String[] args) {
         SpringApplication.run(MoneyBankApplication.class, args);
     }
-
 }

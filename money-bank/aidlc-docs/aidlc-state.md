@@ -9,12 +9,16 @@
 
 ## Trạng thái hiện tại
 
-- **Giai đoạn:** `INCEPTION` — Khởi tạo
-- **Bước:** Application Design
-- **Trạng thái:** `ARTIFACTS_COMPLETED_PENDING_REVIEW` — Đã tạo đủ artifact, chờ review
-- **Công việc hoàn thành gần nhất:** Hoàn thành 8 workstream Application Design (component, API boundary, sequence Proposal/Transfer, IAM, data/consistency, shared contract, unit candidate)
-- **Hoạt động hiện tại:** Chờ người dùng review Application Design
-- **Cổng kiểm soát tiếp theo:** Người dùng phê duyệt Application Design trước khi chuyển sang Units Generation hoặc PoC token exchange
+- **Giai đoạn:** `CONSTRUCTION` — Thiết kế chi tiết & Sinh mã
+- **Bước:** Vòng lặp Unit — Vòng lặp Unit — Đang thực hiện U-06 (Transfer Command & Proposal State Machine)
+- **Trạng thái:** `CONSTRUCTION_U06_IN_PROGRESS`
+- **Công việc hoàn thành gần nhất:** 
+  - U-05 Corebank Adapter hoàn tất.
+  - Refactor toàn bộ CQRS Pipeline Behavior (tách Idempotency ra khỏi Handler) cho CẢ `money-bank` VÀ `corebank` (Đồng nhất kiến trúc).
+  - Tích hợp Resilience4j (Circuit Breaker & Retry) vào `money-bank`.
+  - Khởi tạo Grafana Dashboard (Spring Boot Observability).
+- **Hoạt động hiện tại:** Thực hiện Functional Design cho U-06 (Transfer Command).
+- **Cổng kiểm soát tiếp theo:** Functional Design cho U-06.
 
 ## Nguyên tắc kiểm soát
 

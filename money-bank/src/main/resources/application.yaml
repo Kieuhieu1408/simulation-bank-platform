@@ -1,81 +1,60 @@
 spring:
   application:
-    name: money-bank
-
-  # Datasource không có giá trị mặc định: service này bắt buộc phải có database
-  # bền vững vì unique constraint là lớp chống trùng giao dịch cuối cùng
-  # (ADR-03). Thiếu cấu hình thì ứng dụng phải fail khi khởi động, không được
-  # tự lùi về database tạm.
+    name: moneybank
   datasource:
-    url: ${MB_DATASOURCE_URL}
-    username: ${MB_DATASOURCE_USERNAME}
-    password: ${MB_DATASOURCE_PASSWORD}
-    hikari:
-      # Pool nhỏ và có timeout rõ ràng: chờ connection vô hạn sẽ biến sự cố
-      # database thành treo toàn bộ request thread.
-      maximum-pool-size: ${MB_DATASOURCE_POOL_SIZE:10}
-      connection-timeout: 3000
-      validation-timeout: 2000
-
+    url: ${DB_URL:jdbc:oracle:thin:@localhost:1521/FREEPDB1}
+    username: ${DB_USERNAME:moneybank}
+    password: ${DB_PASSWORD:moneybank_demo}
+    driver-class-name: oracle.jdbc.OracleDriver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    clean-disabled: false
+    clean-on-validation-error: true
+    baseline-on-migrate: true
   jpa:
-    open-in-view: false
     hibernate:
-      # Không để Hibernate tự tạo/sửa schema. Schema là tài sản có kiểm soát,
-      # migration theo expand-migrate-contract (AD-DC-D07).
       ddl-auto: validate
+    open-in-view: false
     properties:
       hibernate:
         jdbc:
           time_zone: UTC
-
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/master}
   jackson:
-    default-property-inclusion: non_null
+    time-zone: UTC
 
 server:
-  # Không lộ thông tin phiên bản server trong response header.
-  error:
-    include-message: never
-    include-stacktrace: never
-    include-binding-errors: never
-  shutdown: graceful
+  port: 8181
 
 management:
   endpoints:
     web:
       exposure:
-        # Chỉ mở đúng những endpoint cần thiết. Endpoint khác phải được duyệt
-        # riêng và chỉ trong management network (SRD 11.2).
-        include: health
+        include: health,info,prometheus,metrics
   endpoint:
     health:
       probes:
         enabled: true
-      # Không trả chi tiết dependency ra ngoài để tránh lộ URL/host nội bộ.
-      show-details: never
-      show-components: never
-  health:
-    # Liveness không được phụ thuộc downstream (OPS-003): database lỗi thì pod
-    # cần được giữ lại để reconciliation chạy, không phải bị restart liên tục.
-    livenessstate:
-      enabled: true
-    readinessstate:
-      enabled: true
-
-money-bank:
-  security:
-    # Dùng jwk-set-uri thay vì issuer discovery để khởi động không phụ thuộc
-    # Keycloak đang sống; JWK chỉ tải khi xác minh token đầu tiên.
-    jwk-set-uri: ${MB_JWK_SET_URI}
-    issuer: ${MB_TOKEN_ISSUER}
-    # Token phát cho service khác phải bị từ chối dù cùng issuer (AD-SEC-TE01).
-    audience: ${MB_TOKEN_AUDIENCE:money-bank}
-    customer-claim: ${MB_CUSTOMER_CLAIM:customer_id}
-  idempotency:
-    # Phải lớn hơn cửa sổ retry của client, nếu không retry muộn sẽ bị coi là ý
-    # định mới. Giá trị này còn chờ nghiệp vụ chốt.
-    result-retention: 24h
+      show-details: always
+  metrics:
+    tags:
+      application: moneybank
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 logging:
+  level:
+    root: INFO
+    com.hieu.moneybank: DEBUG
   pattern:
-    # Correlation id có trong mọi dòng log để truy vết xuyên hệ thống (OPS-001).
-    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [${spring.application.name:money-bank}] [%X{correlationId:-}] %logger{40} - %m%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} traceId=%X{traceId} spanId=%X{spanId} - %msg%n"
+

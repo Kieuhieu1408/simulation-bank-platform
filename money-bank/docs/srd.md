@@ -49,7 +49,7 @@ SRD không thay thế tài liệu API contract, physical data model/DDL, threat 
 | ADR-07 | CQRS ở mức ứng dụng; chưa tách hai database ngay từ phase 1                                                                                                                | Giữ rõ command/query nhưng tránh tăng độ phức tạp sớm |
 | ADR-08 | Giao tiếp đồng bộ cho thao tác cần phản hồi tức thời; Kafka + Outbox cho sự kiện hậu xử lý                                                                                 | Tránh dual-write và tách notification/analytics khỏi giao dịch lõi |
 | ADR-09 | Keycloak chịu trách nhiệm danh tính/token; cơ chế một thiết bị cần thêm device registry và session policy                                                                  | Keycloak mặc định không bảo đảm đầy đủ invariant một thiết bị trong mọi race condition |
-| ADR-10 | Notification Service sở hữu thông báo; Corebank sở hữu lịch sử giao dịch tài chính; Money Bank chỉ lưu workflow/idempotency tối thiểu và audit projection tại MongoDB, khi tra lịch sử phải gọi Corebank | Không tạo thêm system of record cho lịch sử tài chính |
+| ADR-10 | Notification Service sở hữu thông báo; Corebank sở hữu lịch sử giao dịch tài chính; Money Bank chỉ lưu workflow/idempotency tối thiểu và audit projection tại Database, khi tra lịch sử phải gọi Corebank | Không tạo thêm system of record cho lịch sử tài chính |
 | ADR-11 | API Gateway chỉ xử lý traffic north-south; lời gọi east-west dùng private service endpoint                                                                                   | Tránh hairpin, giảm coupling và không public API nội bộ |
 | ADR-12 | Private network không phải authentication; service đích vẫn xác minh TLS/token/audience/authorization                                                                         | Chống bypass Gateway, spoof header và lateral movement |
 | ADR-13 | User-initiated call Money Bank/CMS → Profile dùng Standard Token Exchange V2; system job dùng client credentials                                                              | Token đúng audience và phân biệt user subject với service actor |
@@ -305,12 +305,13 @@ Nếu dùng hold có thể bổ sung `RESERVED`, `COMMITTING`, `RELEASING`, như
 
 | ID | Yêu cầu |
 |---|---|
-| REC-001 | Job tìm transaction `UNKNOWN/RECONCILING` theo `next_retry_at`, dùng DB lease/`SKIP LOCKED` để một worker xử lý. |
-| REC-002 | Query Corebank bằng `externalTransactionId` trước mọi retry command. |
-| REC-003 | Exponential backoff + jitter, giới hạn attempt/thời gian; sau ngưỡng chuyển `MANUAL_REVIEW`. |
+| REC-001 | Sử dụng Workflow Engine (Uber Cadence / Temporal.io) để điều phối luồng chuyển tiền, tự động hóa quá trình backoff và retry khi gọi Corebank lỗi. |
+| REC-002 | Cadence Worker query Corebank bằng `externalTransactionId` (idempotency layer 3) trước mọi retry command để xác nhận trạng thái thực tế. |
+| REC-003 | Exponential backoff + jitter; nếu vượt quá số lần retry tối đa mà vẫn lỗi, giao dịch bị đánh dấu là `PENDING` (hoặc `MANUAL_REVIEW`). |
 | REC-004 | Đối soát theo transactionId, corebankReference, amount, currency, source/destination và time window. |
-| REC-005 | Cảnh báo nếu UNKNOWN vượt SLA hoặc dữ liệu hai bên lệch. |
-| REC-006 | Operator action phải có RBAC, maker-checker cho hành động nhạy cảm và audit đầy đủ. |
+| REC-005 | Cảnh báo nếu UNKNOWN/PENDING vượt SLA hoặc dữ liệu hai bên lệch. |
+| REC-006 | Các giao dịch `PENDING` do hệ thống Cadence từ bỏ sẽ được đẩy ra một hàng đợi trên giao diện CMS (Portal) để Giao dịch viên (GDV) kiểm tra và xử lý thủ công (Manual Intervention). |
+| REC-007 | Operator action (GDV xử lý) phải có RBAC, bắt buộc áp dụng cơ chế Maker-Checker (Người duyệt - Người tạo) và sinh audit log đầy đủ. |
 
 `workflowId` là partition/search key thuận tiện cho workflow log, nhưng database vẫn cần primary key kỹ thuật và index riêng; không nên dùng `workflowId` làm partition key duy nhất nếu gây hotspot hoặc giới hạn query.
 
@@ -326,13 +327,17 @@ Nếu dùng hold có thể bổ sung `RESERVED`, `COMMITTING`, `RELEASING`, như
 Gợi ý package:
 
 ```text
-transfer/
-  api/
-  application/command/{CreateTransfer,ReconcileTransfer}/
-  application/query/{GetTransfer,ListTransactions}/
-  domain/{Transfer,TransferPolicy,TransferStatus}/
-  infrastructure/{corebank,persistence,messaging,redis}/
-shared/{security,observability,error,idempotency}/
+moneybank/
+  api/ (Controller interfaces và implementations)
+  config/ (Security, OpenAPI, Database configuration)
+  constant/ (Enums, constants)
+  domain/ (JPA Entities)
+  dto/ (Request/Response DTOs)
+  exception/ (Global Exception Handler, Custom exceptions)
+  handler/ (CQRS Command/Query Handlers - chứa business logic lõi)
+  pipeline/ (ValidationBehavior, IdempotencyBehavior - interceptors)
+  repository/ (Spring Data JPA Repositories)
+  service/ (Service interfaces and implementations)
 ```
 
 Handler không được đồng nghĩa với controller. Controller chỉ parse/validate transport; command/query handler điều phối use case; domain bảo vệ invariant.
@@ -426,9 +431,9 @@ Ràng buộc:
 
 ### 10.1. Lưu dữ liệu giao dịch
 
-Corebank là system of record và nguồn lịch sử giao dịch tài chính. Money Bank không tạo một bản sao lịch sử tài chính đầy đủ; relational DB của Money Bank chỉ lưu trạng thái kỹ thuật tối thiểu cần cho idempotency, workflow, reconciliation và Outbox.
+Corebank là system of record và nguồn lịch sử giao dịch tài chính. Money Bank không tạo một bản sao lịch sử tài chính đầy đủ; Database của Money Bank chỉ lưu trạng thái kỹ thuật tối thiểu cần cho idempotency, workflow, reconciliation và Outbox.
 
-Relational DB (Oracle theo dependency hiện tại hoặc DB được tổ chức phê duyệt) là lựa chọn mặc định cho trạng thái kỹ thuật này vì cần unique constraint, transaction, locking và query tra soát.
+**Oracle (hoặc H2 cho môi trường test)** là lựa chọn chính thức cho cơ sở dữ liệu của Money Bank. Hệ thống sử dụng kiến trúc phân tầng (Layered Architecture) với JPA/Hibernate và Flyway để quản lý schema, đảm bảo tính ACID, toàn vẹn dữ liệu cho Idempotency và các giao dịch.
 
 Các entity logic tối thiểu:
 
@@ -438,7 +443,7 @@ Các entity logic tối thiểu:
 - `outbox_event`
 - `inbox_event`
 
-Audit projection của Money Bank có thể lưu tại MongoDB theo ADR-10, nhưng phải được tạo từ Outbox đã ghi cùng local transaction với state change; không dual-write trực tiếp relational DB + MongoDB trong use case.
+Audit projection của Money Bank có thể lưu tại Database theo ADR-10, nhưng phải được tạo từ Outbox đã ghi cùng local transaction với state change; không dual-write trực tiếp relational DB + MongoDB trong use case.
 
 Mọi bảng có `created_at`, `updated_at` theo UTC, version khi cần optimistic locking và index cho truy vấn vận hành. Amount dùng decimal/number scale xác định; currency theo ISO 4217.
 
@@ -449,7 +454,7 @@ Mọi bảng có `created_at`, `updated_at` theo UTC, version khi cần optimist
 | `transfer_transaction` | PK `transaction_id`; liên kết `workflow_id` | customer, source/destination token hoặc masked reference, amount, currency, description đã sanitize, status, Corebank reference, timestamps | Unique `transaction_id`; amount dùng fixed decimal; không lưu raw authentication data |
 | `idempotency_record` | PK kỹ thuật; FK/unique reference tới transaction | customer, operation, idempotency key, request hash, response snapshot đã sanitize, expiry | Unique `(customer_id, operation, idempotency_key)`; immutable key/hash sau claim |
 | `workflow_execution` | PK `workflow_id`; FK transaction | current step/status, attempt, next retry, lease owner/expiry, last safe error code | Index `(status, next_retry_at)`; optimistic version |
-| `audit_event` (MongoDB projection) | Unique `event_id`; reference transaction/workflow | actor/subject, service actor, action, before/after status, reason, correlation/trace, occurred at | Append-only; idempotent consume từ Outbox; không update/delete qua application role |
+| `audit_event` (Database projection) | Unique `event_id`; reference transaction/workflow | actor/subject, service actor, action, before/after status, reason, correlation/trace, occurred at | Append-only; idempotent consume từ Outbox; không update/delete qua application role |
 | `outbox_event` | PK `event_id`; aggregate reference | type, schema version, payload tối thiểu, occurred/published at, attempt | Ghi cùng transaction nghiệp vụ; index unpublished records |
 | `inbox_event` | PK kỹ thuật | consumer, event ID, processed at, result | Unique `(consumer, event_id)` |
 
@@ -461,14 +466,14 @@ Quy tắc dữ liệu:
 - Không dùng cascade delete cho transaction, audit, idempotency và outbox tài chính. Purge/archive phải theo retention policy, có phê duyệt và audit.
 - Physical DDL, partition strategy và tablespace chỉ chốt sau khi có volume, retention, Oracle standard và kế hoạch archive.
 
-### 10.3. Audit projection tại MongoDB
+### 10.3. Audit projection tại Database
 
 - Application log: stdout dạng JSON → agent/collector → Loki; không ghi application log trực tiếp từ code vào MongoDB.
-- Money Bank audit: Outbox được ghi cùng relational transaction với state change; audit projector consume idempotent và ghi collection MongoDB append-only bằng unique `event_id`.
-- MongoDB audit không phải lịch sử tài chính/ledger; lịch sử chính thức vẫn lấy từ Corebank.
+- Money Bank audit: Outbox/Audit được ghi cùng transaction với state change; audit projector consume idempotent và ghi bảng Audit append-only bằng unique `event_id`.
+- Audit không phải lịch sử tài chính/ledger; lịch sử chính thức vẫn lấy từ Corebank.
 - Collection phải có schema version, encryption at rest, role đọc/ghi tách biệt, retention/index strategy, backup/restore test và kiểm soát chống update/delete.
 - Nếu audit projector lỗi, Outbox phải giữ event để retry; không rollback giao dịch tài chính đã được Corebank xác nhận.
-- Cần chốt ở Data/Infrastructure Design liệu MongoDB là yêu cầu bắt buộc hay chỉ lựa chọn triển khai. Nếu không có Mongo platform, có thể dùng append-only audit store khác nhưng contract audit không đổi.
+- Cần chốt ở Data/Infrastructure Design liệu MongoDB là yêu cầu bắt buộc hay chỉ lựa chọn triển khai. Nếu không có Oracle/Relational DB platform, có thể dùng append-only audit store khác nhưng contract audit không đổi.
 
 Loki không thay thế audit store; Loki phục vụ tìm kiếm log vận hành và có thể sampling/retention khác.
 
@@ -540,19 +545,23 @@ Theo RED và USE, tránh label cardinality cao:
 - Alert theo symptom/SLO trước cause: error budget burn, UNKNOWN vượt ngưỡng, outbox lag, Corebank timeout spike, DB pool saturation, consumer lag.
 - Log alert có dedup/grouping; không page on-call vì một lỗi đơn lẻ.
 
-## 12. Notification, khuyến mại và lịch sử giao dịch
+## 12. Notification, Lịch sử giao dịch và Read Repair (CQRS tại Corebank)
+
+Để tuân thủ tuyệt đối Luật Ngân hàng và bảo vệ dữ liệu Sổ cái (Ledger), `money-bank` không lưu trữ bản sao Lịch sử giao dịch. Toàn bộ cơ chế lấy lịch sử được thiết kế theo mẫu **BFF Composition** và **CQRS/ODS tại Corebank** như sau:
 
 | Dữ liệu/chức năng | Service sở hữu | Cách cung cấp |
 |---|---|---|
-| Lịch sử giao dịch tài chính | Corebank | Money Bank adapter gọi Corebank và trả dữ liệu được phép; không duy trì bản sao history tại Money Bank |
-| Chi tiết ledger chính thức | Corebank | Money Bank adapter trả dữ liệu được phép |
-| Inbox thông báo, trạng thái đã đọc | Notification Service | Mobile gọi Notification API qua gateway/BFF |
-| Push/SMS/email delivery | Notification Service | Consume event từ Kafka, retry/DLQ độc lập |
-| Campaign/promotion/template/targeting | Notification/Marketing domain | API/read model riêng, cache/CDN nếu phù hợp |
+| Lịch sử giao dịch hoàn tất | Corebank | Corebank đồng bộ dữ liệu theo thời gian thực sang một cụm DB Đọc (ODS / Oracle Active Data Guard). Money Bank gọi API truy vấn xuống ODS này. |
+| Giao dịch đang treo (PENDING) | Money Bank | Money Bank tự lấy từ Database nội bộ (Trạng thái Workflow / In-flight). |
+| Inbox thông báo | Notification | Mobile gọi Notification API qua gateway/BFF. |
 
-Money Bank phát sự kiện `TransferSucceeded`, `TransferFailedFinal`, `ProposalStatusChanged` bằng Outbox. Notification Service consume idempotent và quyết định template/channel. Lỗi Notification không rollback giao dịch tiền.
+### Cơ chế BFF Composition & Read Repair (Tự chữa lành khi Đọc)
+Khi Mobile App yêu cầu xem 10 giao dịch gần nhất (Phân trang):
+1. **Composition:** Money Bank lấy danh sách `PENDING` (từ DB nội bộ của mình) và danh sách Hoàn tất (từ Corebank ODS), trộn lại và trả về cho Mobile App.
+2. **Read Repair (Deduplication):** Nếu phát hiện cùng một `transactionId` nhưng DB nội bộ báo `PENDING` còn Corebank ODS báo `SUCCESS` (Lỗi mất callback/Kafka lag), trạng thái của Corebank luôn được ưu tiên thắng. Money Bank sẽ trả về `SUCCESS` cho khách hàng, đồng thời **tự động cập nhật (Repair)** trạng thái trong Database của nó thành `SUCCESS` ngay lập tức để đồng bộ.
 
-Nếu mobile cần một trang tổng hợp, dùng API Gateway/BFF composition; không chuyển quyền sở hữu notification/promotion hoặc lịch sử tài chính vào Money Bank. Không đưa dữ liệu quảng cáo vào workflow database.
+### Event Publishing
+Money Bank phát sự kiện `TransferSucceeded`, `TransferFailedFinal` bằng Outbox pattern. Notification Service consume idempotent để đẩy thông báo (Push/SMS). Lỗi Notification tuyệt đối không được rollback giao dịch tiền.
 
 ## 13. API và error contract mức hệ thống
 
@@ -735,7 +744,7 @@ Ghi chú: threat model và NFR specification sẽ phân rã thêm `SEC-*`/`OPS-*
 ## Phụ lục B — Những điều không được làm
 
 - Không coi Redis lock/key là bằng chứng duy nhất chống giao dịch trùng.
-- Không giữ tiền chỉ trong Money Bank DB/Redis/MongoDB.
+- Không giữ tiền chỉ trong Money Bank DB/Redis.
 - Không tự retry transfer sau timeout khi chưa query Corebank.
 - Không dùng Kafka exactly-once marketing claim để thay unique constraint/idempotent consumer.
 - Không dùng Loki/application log thay cho audit trail.
