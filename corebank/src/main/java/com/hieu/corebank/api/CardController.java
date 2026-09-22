@@ -1,6 +1,6 @@
 package com.hieu.corebank.api;
 
-import com.hieu.corebank.dto.response.CardResponseDTO;
+import com.hieu.corebank.dto.IssueCardResponseDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -10,5 +10,5 @@ import org.springframework.web.bind.annotation.RequestMapping;
 public interface CardController {
 
     @GetMapping("/{id}")
-    ResponseEntity<CardResponseDTO> card(@PathVariable String id);
+    ResponseEntity<IssueCardResponseDTO> card(@PathVariable String id);
 }

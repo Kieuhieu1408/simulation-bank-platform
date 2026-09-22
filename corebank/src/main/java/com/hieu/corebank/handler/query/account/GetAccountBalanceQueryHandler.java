@@ -3,7 +3,7 @@ package com.hieu.corebank.handler.query.account;
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
 import com.hieu.corebank.domain.Account;
-import com.hieu.corebank.dto.response.AccountBalanceResponseDTO;
+import com.hieu.corebank.dto.AccountBalanceResponseDTO;
 import com.hieu.corebank.exception.NotFoundException;
 import com.hieu.corebank.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;

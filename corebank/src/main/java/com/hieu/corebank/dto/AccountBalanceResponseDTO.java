@@ -1,4 +1,4 @@
-package com.hieu.corebank.dto.response;
+package com.hieu.corebank.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

@@ -2,7 +2,7 @@ package com.hieu.moneybank.api.impl;
 
 import com.hieu.moneybank.api.BaseController;
 import com.hieu.moneybank.api.CardController;
-import com.hieu.moneybank.dto.response.CardResponseDTO;
+import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
 import com.hieu.moneybank.handler.query.card.GetCardByIdQueryHandler.GetCardByIdQuery;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CardControllerImpl extends BaseController implements CardController {
 
     @Override
-    public ResponseEntity<CardResponseDTO> card(String id) {
-        return executeQuery(new GetCardByIdQuery(id), CardResponseDTO.class);
+    public ResponseEntity<IssueCardResponseDTO> card(String id) {
+        return executeQuery(new GetCardByIdQuery(id), IssueCardResponseDTO.class);
     }
 }

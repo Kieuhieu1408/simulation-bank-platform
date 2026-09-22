@@ -1,10 +1,10 @@
 package com.hieu.corebank.api;
 
-import com.hieu.corebank.dto.request.AccountCreateRequestDTO;
-import com.hieu.corebank.dto.response.AccountBalanceResponseDTO;
-import com.hieu.corebank.dto.response.AccountResponseDTO;
-import com.hieu.corebank.dto.response.CardResponseDTO;
-import com.hieu.corebank.dto.response.TransferResponseDTO;
+import com.hieu.corebank.dto.AccountCreateRequestDTO;
+import com.hieu.corebank.dto.AccountBalanceResponseDTO;
+import com.hieu.corebank.dto.AccountResponseDTO;
+import com.hieu.corebank.dto.IssueCardResponseDTO;
+import com.hieu.corebank.dto.TransferResponseDTO;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -26,7 +26,7 @@ public interface AccountController {
     ResponseEntity<AccountBalanceResponseDTO> balance(@PathVariable String id);
 
     @PostMapping("/{id}/cards")
-    ResponseEntity<CardResponseDTO> issueCard(@PathVariable String id);
+    ResponseEntity<IssueCardResponseDTO> issueCard(@PathVariable String id);
 
     @GetMapping("/{id}/transactions")
     ResponseEntity<Page<TransferResponseDTO>> history(

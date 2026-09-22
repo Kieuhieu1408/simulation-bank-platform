@@ -3,11 +3,12 @@ package com.hieu.corebank.handler.command.account;
 import com.hieu.common.cqrs.CommandHandler;
 import com.hieu.corebank.domain.Account;
 import com.hieu.corebank.domain.Customer;
-import com.hieu.corebank.dto.request.AccountCreateRequestDTO;
-import com.hieu.corebank.dto.response.AccountResponseDTO;
+import com.hieu.corebank.dto.AccountCreateRequestDTO;
+import com.hieu.corebank.dto.AccountResponseDTO;
 import com.hieu.corebank.exception.NotFoundException;
 import com.hieu.corebank.repository.AccountRepository;
 import com.hieu.corebank.repository.CustomerRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,19 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 
 @Component
+@RequiredArgsConstructor
 public class CreateAccountCommandHandler implements CommandHandler<AccountCreateRequestDTO, AccountResponseDTO> {
 
     private final AccountRepository accounts;
     private final CustomerRepository customers;
     private final JdbcClient jdbc;
-
-    public CreateAccountCommandHandler(AccountRepository accounts,
-                                       CustomerRepository customers,
-                                       JdbcClient jdbc) {
-        this.accounts = accounts;
-        this.customers = customers;
-        this.jdbc = jdbc;
-    }
 
     @Override
     @Transactional

@@ -2,8 +2,8 @@ package com.hieu.corebank.handler.command.customer;
 
 import com.hieu.common.cqrs.CommandHandler;
 import com.hieu.corebank.domain.Customer;
-import com.hieu.corebank.dto.request.CustomerCreateRequestDTO;
-import com.hieu.corebank.dto.response.CustomerResponseDTO;
+import com.hieu.corebank.dto.CustomerCreateRequestDTO;
+import com.hieu.corebank.dto.CustomerResponseDTO;
 import com.hieu.corebank.exception.BusinessException;
 import com.hieu.corebank.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;

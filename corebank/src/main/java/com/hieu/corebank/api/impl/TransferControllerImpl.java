@@ -2,8 +2,8 @@ package com.hieu.corebank.api.impl;
 
 import com.hieu.corebank.api.BaseController;
 import com.hieu.corebank.api.TransferController;
-import com.hieu.corebank.dto.request.TransferRequestDTO;
-import com.hieu.corebank.dto.response.TransferResponseDTO;
+import com.hieu.corebank.dto.TransferRequestDTO;
+import com.hieu.corebank.dto.TransferResponseDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 

@@ -1,8 +1,8 @@
 package com.hieu.corebank.handler.command.transfer;
 
 import com.hieu.common.cqrs.CommandHandler;
-import com.hieu.corebank.dto.request.TransferRequestDTO;
-import com.hieu.corebank.dto.response.TransferResponseDTO;
+import com.hieu.corebank.dto.TransferRequestDTO;
+import com.hieu.corebank.dto.TransferResponseDTO;
 import com.hieu.corebank.constant.AccountStatus;
 import com.hieu.corebank.domain.Account;
 import com.hieu.corebank.domain.BankTransaction;

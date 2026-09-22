@@ -1,4 +1,4 @@
-package com.hieu.corebank.dto.response;
+package com.hieu.corebank.dto;
 
 import com.hieu.corebank.constant.TransactionStatus;
 import com.hieu.corebank.domain.BankTransaction;

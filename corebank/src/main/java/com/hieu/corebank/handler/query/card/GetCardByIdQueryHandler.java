@@ -3,29 +3,27 @@ package com.hieu.corebank.handler.query.card;
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
 import com.hieu.corebank.domain.BankCard;
-import com.hieu.corebank.dto.response.CardResponseDTO;
+import com.hieu.corebank.dto.IssueCardResponseDTO;
 import com.hieu.corebank.exception.NotFoundException;
 import com.hieu.corebank.repository.CardRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
-public class GetCardByIdQueryHandler implements QueryHandler<GetCardByIdQueryHandler.GetCardByIdQuery, CardResponseDTO> {
+@RequiredArgsConstructor
+public class GetCardByIdQueryHandler implements QueryHandler<GetCardByIdQueryHandler.GetCardByIdQuery, IssueCardResponseDTO> {
 
-    public record GetCardByIdQuery(String cardId) implements Query<CardResponseDTO> {
+    public record GetCardByIdQuery(String cardId) implements Query<IssueCardResponseDTO> {
     }
 
     private final CardRepository cards;
 
-    public GetCardByIdQueryHandler(CardRepository cards) {
-        this.cards = cards;
-    }
-
     @Override
     @Transactional(readOnly = true)
-    public CardResponseDTO handle(GetCardByIdQuery query) {
+    public IssueCardResponseDTO handle(GetCardByIdQuery query) {
         BankCard card = cards.findById(query.cardId())
                 .orElseThrow(() -> new NotFoundException("Card not found: " + query.cardId()));
-        return CardResponseDTO.from(card);
+        return IssueCardResponseDTO.from(card);
     }
 }

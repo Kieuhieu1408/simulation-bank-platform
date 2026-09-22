@@ -3,7 +3,7 @@ package com.hieu.moneybank.handler.query.card;
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
 import com.hieu.moneybank.domain.BankCard;
-import com.hieu.moneybank.dto.response.CardResponseDTO;
+import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
 import com.hieu.moneybank.repository.CardRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -14,17 +14,17 @@ import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
-public class GetCardsByCifQueryHandler implements QueryHandler<GetCardsByCifQueryHandler.GetCardsByCifQuery, List<CardResponseDTO>> {
+public class GetCardsByCifQueryHandler implements QueryHandler<GetCardsByCifQueryHandler.GetCardsByCifQuery, List<IssueCardResponseDTO>> {
 
-    public record GetCardsByCifQuery(String cifNumber) implements Query<List<CardResponseDTO>> {
+    public record GetCardsByCifQuery(String cifNumber) implements Query<List<IssueCardResponseDTO>> {
     }
 
     private final CardRepository cards;
 
     @Override
     @Transactional(readOnly = true)
-    public List<CardResponseDTO> handle(GetCardsByCifQuery query) {
+    public List<IssueCardResponseDTO> handle(GetCardsByCifQuery query) {
         List<BankCard> cardList = cards.findByAccountCustomerCifNumberOrderByCreatedAtDesc(query.cifNumber().toUpperCase());
-        return cardList.stream().map(CardResponseDTO::from).collect(Collectors.toList());
+        return cardList.stream().map(IssueCardResponseDTO::from).collect(Collectors.toList());
     }
 }

@@ -3,11 +3,12 @@ package com.hieu.corebank.handler.query.transfer;
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
 import com.hieu.corebank.domain.BankTransaction;
-import com.hieu.corebank.dto.response.TransferResponseDTO;
+import com.hieu.corebank.dto.TransferResponseDTO;
 import com.hieu.corebank.exception.BusinessException;
 import com.hieu.corebank.exception.NotFoundException;
 import com.hieu.corebank.repository.AccountRepository;
 import com.hieu.corebank.repository.TransactionRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 
 @Component
+@RequiredArgsConstructor
 public class GetTransferHistoryQueryHandler implements QueryHandler<GetTransferHistoryQueryHandler.GetTransferHistoryQuery, Page<TransferResponseDTO>> {
 
     public record GetTransferHistoryQuery(
@@ -28,11 +30,6 @@ public class GetTransferHistoryQueryHandler implements QueryHandler<GetTransferH
 
     private final AccountRepository accounts;
     private final TransactionRepository transactions;
-
-    public GetTransferHistoryQueryHandler(AccountRepository accounts, TransactionRepository transactions) {
-        this.accounts = accounts;
-        this.transactions = transactions;
-    }
 
     @Override
     @Transactional(readOnly = true)

@@ -3,7 +3,7 @@ package com.hieu.moneybank.api;
 import com.hieu.moneybank.dto.request.AccountCreateRequestDTO;
 import com.hieu.moneybank.dto.response.AccountBalanceResponseDTO;
 import com.hieu.moneybank.dto.response.AccountResponseDTO;
-import com.hieu.moneybank.dto.response.CardResponseDTO;
+import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
 import com.hieu.moneybank.dto.response.TransferResponseDTO;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -26,7 +26,7 @@ public interface AccountController {
     ResponseEntity<AccountBalanceResponseDTO> balance(@PathVariable String id);
 
     @PostMapping("/{id}/cards")
-    ResponseEntity<CardResponseDTO> issueCard(@PathVariable String id);
+    ResponseEntity<IssueCardResponseDTO> issueCard(@PathVariable String id);
 
     @GetMapping("/{id}/transactions")
     ResponseEntity<Page<TransferResponseDTO>> history(

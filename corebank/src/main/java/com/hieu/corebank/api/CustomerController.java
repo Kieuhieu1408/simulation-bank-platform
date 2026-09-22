@@ -1,9 +1,9 @@
 package com.hieu.corebank.api;
 
-import com.hieu.corebank.dto.request.CustomerCreateRequestDTO;
-import com.hieu.corebank.dto.response.AccountResponseDTO;
-import com.hieu.corebank.dto.response.CardResponseDTO;
-import com.hieu.corebank.dto.response.CustomerResponseDTO;
+import com.hieu.corebank.dto.CustomerCreateRequestDTO;
+import com.hieu.corebank.dto.AccountResponseDTO;
+import com.hieu.corebank.dto.IssueCardResponseDTO;
+import com.hieu.corebank.dto.CustomerResponseDTO;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,5 +23,5 @@ public interface CustomerController {
     ResponseEntity<List<AccountResponseDTO>> accounts(@PathVariable String cifNumber);
 
     @GetMapping("/{cifNumber}/cards")
-    ResponseEntity<List<CardResponseDTO>> cards(@PathVariable String cifNumber);
+    ResponseEntity<List<IssueCardResponseDTO>> cards(@PathVariable String cifNumber);
 }

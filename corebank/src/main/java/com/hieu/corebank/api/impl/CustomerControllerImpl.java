@@ -2,10 +2,10 @@ package com.hieu.corebank.api.impl;
 
 import com.hieu.corebank.api.BaseController;
 import com.hieu.corebank.api.CustomerController;
-import com.hieu.corebank.dto.request.CustomerCreateRequestDTO;
-import com.hieu.corebank.dto.response.AccountResponseDTO;
-import com.hieu.corebank.dto.response.CardResponseDTO;
-import com.hieu.corebank.dto.response.CustomerResponseDTO;
+import com.hieu.corebank.dto.CustomerCreateRequestDTO;
+import com.hieu.corebank.dto.AccountResponseDTO;
+import com.hieu.corebank.dto.IssueCardResponseDTO;
+import com.hieu.corebank.dto.CustomerResponseDTO;
 import com.hieu.corebank.handler.query.account.GetAccountsByCifQueryHandler.GetAccountsByCifQuery;
 import com.hieu.corebank.handler.query.card.GetCardsByCifQueryHandler.GetCardsByCifQuery;
 import com.hieu.corebank.handler.query.customer.GetCustomerQueryHandler.GetCustomerQuery;
@@ -35,8 +35,8 @@ public class CustomerControllerImpl extends BaseController implements CustomerCo
 
     @Override
     @SuppressWarnings("unchecked")
-    public ResponseEntity<List<CardResponseDTO>> cards(String cifNumber) {
+    public ResponseEntity<List<IssueCardResponseDTO>> cards(String cifNumber) {
         // Validate customer exists implicitly if needed, or rely on the query handler.
-        return executeQuery(new GetCardsByCifQuery(cifNumber), (Class<List<CardResponseDTO>>) (Class<?>) List.class);
+        return executeQuery(new GetCardsByCifQuery(cifNumber), (Class<List<IssueCardResponseDTO>>) (Class<?>) List.class);
     }
 }

@@ -5,9 +5,9 @@ import com.hieu.moneybank.api.BaseController;
 import com.hieu.moneybank.dto.request.AccountCreateRequestDTO;
 import com.hieu.moneybank.dto.response.AccountBalanceResponseDTO;
 import com.hieu.moneybank.dto.response.AccountResponseDTO;
-import com.hieu.moneybank.dto.response.CardResponseDTO;
+import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
 import com.hieu.moneybank.dto.response.TransferResponseDTO;
-import com.hieu.moneybank.handler.command.card.IssueCardCommandHandler.IssueCardCommand;
+import com.hieu.moneybank.dto.request.IssueCardRequestDTO;
 import com.hieu.moneybank.handler.query.account.GetAccountBalanceQueryHandler.GetAccountBalanceQuery;
 import com.hieu.moneybank.handler.query.account.GetAccountByIdQueryHandler.GetAccountByIdQueryRequestDTO;
 import com.hieu.moneybank.handler.query.transfer.GetTransferHistoryQueryHandler.GetTransferHistoryQuery;
@@ -38,8 +38,8 @@ public class AccountControllerImpl extends BaseController implements AccountCont
     }
 
     @Override
-    public ResponseEntity<CardResponseDTO> issueCard(String id) {
-        return execute(new IssueCardCommand(id), CardResponseDTO.class);
+    public ResponseEntity<IssueCardResponseDTO> issueCard(String id) {
+        return execute(new IssueCardRequestDTO(id), IssueCardResponseDTO.class);
     }
 
     @Override

@@ -2,7 +2,7 @@ package com.hieu.moneybank.api;
 
 import com.hieu.moneybank.dto.request.CustomerCreateRequestDTO;
 import com.hieu.moneybank.dto.response.AccountResponseDTO;
-import com.hieu.moneybank.dto.response.CardResponseDTO;
+import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
 import com.hieu.moneybank.dto.response.CustomerResponseDTO;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -23,5 +23,5 @@ public interface CustomerController {
     ResponseEntity<List<AccountResponseDTO>> accounts(@PathVariable String cifNumber);
 
     @GetMapping("/{cifNumber}/cards")
-    ResponseEntity<List<CardResponseDTO>> cards(@PathVariable String cifNumber);
+    ResponseEntity<List<IssueCardResponseDTO>> cards(@PathVariable String cifNumber);
 }

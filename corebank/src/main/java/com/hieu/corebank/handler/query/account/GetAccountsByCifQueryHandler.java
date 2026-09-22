@@ -4,7 +4,7 @@ import com.hieu.common.cqrs.Dispatcher;
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
 import com.hieu.corebank.domain.Account;
-import com.hieu.corebank.dto.response.AccountResponseDTO;
+import com.hieu.corebank.dto.AccountResponseDTO;
 import com.hieu.corebank.handler.query.customer.GetCustomerQueryHandler.GetCustomerQuery;
 import com.hieu.corebank.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;

@@ -4,7 +4,7 @@ import com.hieu.moneybank.api.BaseController;
 import com.hieu.moneybank.api.CustomerController;
 import com.hieu.moneybank.dto.request.CustomerCreateRequestDTO;
 import com.hieu.moneybank.dto.response.AccountResponseDTO;
-import com.hieu.moneybank.dto.response.CardResponseDTO;
+import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
 import com.hieu.moneybank.dto.response.CustomerResponseDTO;
 import com.hieu.moneybank.handler.query.account.GetAccountsByCifQueryHandler.GetAccountsByCifQuery;
 import com.hieu.moneybank.handler.query.card.GetCardsByCifQueryHandler.GetCardsByCifQuery;
@@ -35,8 +35,8 @@ public class CustomerControllerImpl extends BaseController implements CustomerCo
 
     @Override
     @SuppressWarnings("unchecked")
-    public ResponseEntity<List<CardResponseDTO>> cards(String cifNumber) {
+    public ResponseEntity<List<IssueCardResponseDTO>> cards(String cifNumber) {
         // Validate customer exists implicitly if needed, or rely on the query handler.
-        return executeQuery(new GetCardsByCifQuery(cifNumber), (Class<List<CardResponseDTO>>) (Class<?>) List.class);
+        return executeQuery(new GetCardsByCifQuery(cifNumber), (Class<List<IssueCardResponseDTO>>) (Class<?>) List.class);
     }
 }

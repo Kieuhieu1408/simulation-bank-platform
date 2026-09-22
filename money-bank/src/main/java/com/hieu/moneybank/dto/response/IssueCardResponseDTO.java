@@ -1,7 +1,7 @@
-package com.hieu.corebank.dto.response;
+package com.hieu.moneybank.dto.response;
 
-import com.hieu.corebank.constant.CardStatus;
-import com.hieu.corebank.domain.BankCard;
+import com.hieu.moneybank.constant.CardStatus;
+import com.hieu.moneybank.domain.BankCard;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,7 +13,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class CardResponseDTO {
+public class IssueCardResponseDTO {
     private String cardId;
     private String maskedCardNumber;
     private String cvv;
@@ -22,10 +22,10 @@ public class CardResponseDTO {
     private CardStatus status;
     private Instant createdAt;
 
-    public static CardResponseDTO from(BankCard card) {
+    public static IssueCardResponseDTO from(BankCard card) {
         String number = card.getCardNumber();
         String masked = number.substring(0, 4) + " **** **** " + number.substring(12);
-        return CardResponseDTO.builder()
+        return IssueCardResponseDTO.builder()
                 .cardId(card.getId())
                 .maskedCardNumber(masked)
                 .cvv(card.getCvv())
