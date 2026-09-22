@@ -3,7 +3,9 @@ package com.hieu.common.outbox;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
+@Component
 @ConfigurationProperties(prefix = "money-bank.outbox")
 public class OutboxProperties {
 

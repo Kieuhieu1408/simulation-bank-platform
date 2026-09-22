@@ -1,32 +1,18 @@
-# Common Service (common-service)
+# Common Service
 
-## Overview
+Module `common-service` cung cấp các thư viện và cấu trúc dùng chung cho toàn bộ Simulation Bank Platform. Việc sử dụng `common-service` giúp giảm thiểu duplicate code và đồng nhất kiến trúc (Security, CQRS, Idempotency, Outbox, Exception Handling) giữa các dịch vụ như `corebank` và `money-bank`.
 
-`common-service` is a Spring Boot module designed as a shared library for the microservices in the Simulation Bank Platform (e.g., `money-bank`, `corebank`). It encapsulates common cross-cutting concerns, ensuring consistent implementations across the ecosystem and adhering to the DRY (Don't Repeat Yourself) principle.
+## Cấu trúc thư mục chính
 
-The service provides unified logic for:
-- **Global Exception Handling** (Consistent error mapping and formats).
-- **Security & Authorization** (JWT processing, RBAC foundations, Identity Context).
-- **Idempotency** (Ensuring safe retries via AOP and tracking).
-- **Outbox Pattern** (Transactional Outbox components to ensure reliable message dispatching).
-- **Observability** (Tracing, logging correlation filters, and sensitive data masking).
-- **Utilities** (Date/Time logic, constants).
+- `com.hieu.common.cqrs`: Định nghĩa các interface lõi cho mô hình CQRS (`Command`, `Query`, `CommandHandler`, `QueryHandler`, `Dispatcher`, `SpringDispatcher`).
+- `com.hieu.common.idempotency`: Cung cấp cơ chế Idempotency Pattern để đảm bảo các thao tác chuyển tiền, tạo tài khoản không bị xử lý trùng lặp do retry từ phía client. Bao gồm: `IdempotencyRecord`, `IdempotencyService`, `IdempotencyRecordRepository`.
+- `com.hieu.common.outbox`: Cung cấp cơ chế Transactional Outbox Pattern (`OutboxEvent`, `OutboxDispatcher`, `OutboxDispatchStore`) đảm bảo tính toàn vẹn dữ liệu khi publish các event (Kafka, MQ) từ các domain aggregate.
+- `com.hieu.common.security`: Chứa cấu hình bảo mật chuẩn (`SecurityConfig`, `CommonSecurityProperties`) dùng cho các Resource Server (JWT verification, xác minh token issuer, audience).
+- `com.hieu.common.exception`: Các exception chuẩn cho toàn hệ thống (`NotFoundException`, `IdempotencyConflictException`, v.v.).
 
-## Module Structure
+## Hướng dẫn sử dụng
 
-```
-com.hieu.common
-├── exception            // Global exceptions handling, custom Business/System exceptions, and ErrorCodes
-├── idempotency          // Idempotency AOP tracking to avoid duplicate POST/PUT processing
-├── observability        // Tracing and logging logic (CorrelationID, Data Masking)
-├── outbox               // Transactional Outbox pattern entities, repository, and publisher logic
-├── security             // Common Security components (JWT Validation, Identity Context extraction)
-└── util                 // Common configuration and utilities (e.g., TimeConfig)
-```
-
-## How to Integrate
-
-In your microservice (e.g. `corebank` or `money-bank`), add the dependency in your `pom.xml`:
+### 1. Thêm dependency
 
 ```xml
 <dependency>
@@ -36,25 +22,61 @@ In your microservice (e.g. `corebank` or `money-bank`), add the dependency in yo
 </dependency>
 ```
 
-### 1. Exception Handling
-All services implicitly benefit from `GlobalExceptionHandler`. 
-Throw `com.hieu.common.exception.CommonException` with corresponding `ErrorCode`s for any domain or technical errors. The unified interceptor will parse it into a standard HTTP Response (`ApiErrorResponse`).
+### 2. Cấu hình ComponentScan và EntityScan
 
-### 2. Security
-The provided `SecurityConfig` ensures all API endpoints are `denyAll` by default unless explicitly granted. It extracts identities using `JwtAudienceValidator` and loads the user scopes into the ThreadLocal-backed `IdentityContext`. Services can directly fetch the authenticated user info:
+Để Spring Boot của dịch vụ sử dụng tự động nhận diện các bean và JPA Entity từ `common-service`, bạn cần thêm khai báo quét package trong file chạy chính của ứng dụng:
+
 ```java
-String userId = IdentityContext.getCurrentUserId();
+@SpringBootApplication
+@ComponentScan(basePackages = {"com.hieu.your_service", "com.hieu.common"})
+@EntityScan(basePackages = {"com.hieu.your_service", "com.hieu.common"})
+@EnableJpaRepositories(basePackages = {"com.hieu.your_service", "com.hieu.common"})
+public class YourServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(YourServiceApplication.class, args);
+    }
+}
 ```
 
-### 3. Idempotency
-Ensure retries don't mutate state twice by utilizing the idempotency framework provided. Annotate the susceptible methods, and the framework will intercept, hash the payload, and track the state using the `idempotency_record` database table.
+### 3. Cấu hình ứng dụng (application.yaml)
 
-### 4. Observability
-Automatic correlation ID propagation and data masking. The `CorrelationIdFilter` attaches a unique `trace_id` per request lifecycle which can be retrieved for internal tracing contexts. Log masking protects sensitive customer data based on internal configurations.
+Các bean trong `common-service` sẽ yêu cầu một số properties bắt buộc để có thể khởi chạy (Ví dụ: `money-bank.security`). Bạn cần cung cấp chúng:
 
-### 5. Outbox Pattern
-Using Transactional Outbox means storing the internal Database Transaction along with a message payload intended for event brokers. Use the provided interfaces `OutboxEventRepository` and `OutboxDispatcher` to implement reliable message dispatching without data loss.
+```yaml
+money-bank:
+  security:
+    jwk-set-uri: ${KEYCLOAK_ISSUER_URI}/protocol/openid-connect/certs
+    issuer: ${KEYCLOAK_ISSUER_URI}
+    audience: your-service-audience
+  idempotency:
+    resultRetention: 24h
+```
 
-## Migration Note
+### 4. CQRS Pattern
 
-The shared logic was previously duplicated in `money-bank` and `corebank` under their respective `shared` packages. They have now been consolidated here. Please ensure to remove any duplicated `com.hieu.<service>.shared` code and rely entirely on `com.hieu.common`.
+Các Use Case/Handler trong hệ thống nên triển khai các interface từ `common-service`:
+
+```java
+@Component
+public class CreateAccountCommandHandler implements CommandHandler<CreateAccountCommand, AccountResponseDTO> {
+    @Override
+    public AccountResponseDTO handle(CreateAccountCommand command) {
+        // Implementation
+    }
+}
+```
+
+Và sử dụng `Dispatcher` để gọi lệnh từ RestController:
+
+```java
+@RestController
+@RequiredArgsConstructor
+public class AccountController {
+    private final Dispatcher dispatcher;
+
+    @PostMapping
+    public AccountResponseDTO create(@RequestBody CreateAccountCommand command) {
+        return dispatcher.dispatch(command);
+    }
+}
+```

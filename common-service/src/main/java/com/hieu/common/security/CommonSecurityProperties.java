@@ -2,6 +2,7 @@ package com.hieu.common.security;
 
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -15,6 +16,7 @@ import org.springframework.validation.annotation.Validated;
  * thuộc Keycloak đang sống; JWK chỉ được tải khi cần xác minh token đầu tiên.
  */
 @Validated
+@Component
 @ConfigurationProperties(prefix = "money-bank.security")
 public class CommonSecurityProperties {
 

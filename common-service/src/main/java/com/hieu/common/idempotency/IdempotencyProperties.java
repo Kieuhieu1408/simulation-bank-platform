@@ -3,6 +3,7 @@ package com.hieu.common.idempotency;
 import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 /**
  * Cấu hình idempotency.
@@ -11,6 +12,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * lần retry muộn sẽ được coi là ý định mới và tạo giao dịch thứ hai. Giá trị khởi
  * điểm 24 giờ theo SRD mục 6.2 và còn chờ nghiệp vụ chốt.
  */
+@Component
 @ConfigurationProperties(prefix = "money-bank.idempotency")
 public class IdempotencyProperties {
 
