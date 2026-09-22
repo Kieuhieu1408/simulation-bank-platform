@@ -1,0 +1,27 @@
+[
+  {
+    "question": "Một công ty e-commerce quốc tế (International Merchant) có doanh số tháng trước là 6 triệu USD. Trong kỳ quyết toán này, hệ thống AML nghi ngờ lô giao dịch quyết toán có vi phạm trừng phạt nên đã tiến hành AML Hold. Biết rằng Merchant này trước đó đã ký hợp đồng kỳ hạn ngoại hối theo quy định của Ngân hàng Mô phỏng, và sự cố AML Hold được xác định do Merchant thiếu thông tin UBO. Vậy số phận của hợp đồng kỳ hạn này sẽ được giải quyết ra sao và chi phí phát sinh do ai chịu?",
+    "expected_answer": "Hợp đồng kỳ hạn sẽ được tự động chuyển đổi thành hợp đồng hoán đổi ngắn hạn (Rollover) để kéo dài thời gian đáo hạn cho đến khi AML Hold được gỡ bỏ. Merchant sẽ phải chịu hoàn toàn chi phí Rollover (Swap Points) do nguyên nhân AML Hold là do Merchant cung cấp thiếu thông tin UBO.",
+    "trap_explanation": "Câu hỏi đánh giá việc kết nối giữa quy định bắt buộc Hedging (cho doanh số >5M) và xử lý ngoại lệ khi gặp AML Hold. Bẫy là việc xác định ai chịu phí Rollover: quy định chỉ rõ Merchant chịu nếu lỗi do thiếu UBO."
+  },
+  {
+    "question": "Một giao dịch thanh toán thương mại điện tử quốc tế trị giá 60,000 USD qua cổng Paygate bị hệ thống AML giữ lại để rà soát, quá trình rà soát kéo dài 60 giờ mới được gỡ bỏ (Release time). Khách hàng muốn biết tỷ giá chốt (FX fixing) áp dụng cho giao dịch này sẽ là tỷ giá lúc T0, T+1, tỷ giá chốt ban đầu được gia hạn, hay tỷ giá thả nổi lúc Release time? Biết rằng giao dịch này chưa có xác nhận từ ngân hàng đại lý.",
+    "expected_answer": "Giao dịch sẽ áp dụng tỷ giá thả nổi tại thời điểm AML được gỡ bỏ (Release time). Dù giao dịch >50,000 USD ban đầu dùng tỷ giá tạm tính và chốt ở T+1, nhưng khi bị hoãn do rà soát AML, tỷ giá chốt chỉ được gia hạn tối đa 48 giờ. Vì thời gian rà soát lên tới 60 giờ, tỷ giá chốt ban đầu hết hạn và hệ thống áp dụng tỷ giá thả nổi.",
+    "trap_explanation": "Đòi hỏi phân tích luồng thời gian chốt tỷ giá: >50k (T+1), nhưng vướng AML thì được gia hạn max 48h. Quá 48h (ở đây là 60h) thì phải dùng tỷ giá thả nổi (floating) lúc release."
+  },
+  {
+    "question": "Một giao dịch chuyển tiền bằng USD của người không cư trú qua mạng lưới Swift bị hệ thống AML của Ngân hàng Mô phỏng báo 'Red' do liên quan quốc gia rủi ro cao (HRJ). Cùng lúc đó, ngân hàng đại lý tại Mỹ ra lệnh phong tỏa khoản tiền. Khách hàng khiếu nại dựa trên luật bảo vệ quyền riêng tư cá nhân (GDPR) để yêu cầu gỡ bỏ phong tỏa. Theo nguyên tắc 'Quyền tài phán áp đảo' và 'Ma trận Giải quyết Xung đột' của ngân hàng, giao dịch này sẽ bị xử lý như thế nào?",
+    "expected_answer": "Giao dịch sẽ bị chuyển sang trạng thái 'Hard Stop' (do AML báo Red) và chỉ được gỡ bỏ nếu có chữ ký số vật lý của Trưởng bộ phận Tuân thủ (CCO). Đồng thời, theo nguyên tắc 'Quyền tài phán áp đảo', vì giao dịch bằng USD qua Swift, lệnh phong tỏa của ngân hàng đại lý tại Mỹ được ưu tiên thực thi bất chấp luật nội địa hay khiếu nại GDPR. Khách hàng cũng sẽ bị áp dụng 'Tạm giữ dây chuyền' (Cascading Hold) khóa mọi tài khoản nội địa.",
+    "trap_explanation": "Yêu cầu kết nối 3 quy định: Ma trận xử lý Red flag (Hard Stop + CCO duyệt), Quyền tài phán áp đảo (ưu tiên lệnh ngân hàng đại lý cho USD/Swift), và Cascading Hold đối với giao dịch HRJ."
+  },
+  {
+    "question": "Để giải quyết tình trạng thiếu hụt thanh khoản bằng ngoại tệ (EUR) trong khi chờ lô tiền VND bị AML Hold được gỡ bỏ, một International Merchant yêu cầu sử dụng sản phẩm Synthetic FX Swap của Ngân hàng Mô phỏng. Lãi suất tạm ứng sẽ được tính như thế nào, và điều kiện tiên quyết về xếp hạng tín nhiệm của Merchant để được sử dụng sản phẩm này là gì? Nếu lô tiền VND cuối cùng bị tịch thu do lừa đảo thì ngân hàng đối mặt rủi ro gì?",
+    "expected_answer": "Lãi suất tạm ứng sẽ dựa trên chi phí vốn (Cost of Funds) của ngân hàng cộng biên độ 1.5%. Điều kiện tiên quyết là Merchant phải có Điểm Tín nhiệm AML (AML Trust Score) trên 85/100 và không có lịch sử vi phạm trong 3 năm gần nhất. Nếu lô tiền VND bị tịch thu (Confiscation), ngân hàng sẽ đối mặt với rủi ro tín dụng là mất trắng khoản ngoại tệ đã tạm ứng ở Leg 1 của Swap.",
+    "trap_explanation": "Kiểm tra chi tiết cơ chế cấp tín dụng phái sinh Synthetic FX Swap: biên độ lãi suất (+1.5%), điểm số AML tin cậy (85/100, 3 năm không vi phạm) và rủi ro mất trắng Leg 1."
+  },
+  {
+    "question": "Một doanh nghiệp FDI nhận vốn góp từ công ty mẹ, ngay sau đó có ý định dùng nền tảng Paygate để trả tiền lương trực tiếp từ Tài khoản Vốn FDI. Nếu bị chặn, doanh nghiệp tiến hành bán ngoại tệ thu VND và sau 24 giờ chuyển ngay toàn bộ cho 5 tài khoản cá nhân khác nhau dưới danh nghĩa 'tạm ứng tiền hàng'. Hành động này có vi phạm gì và hệ thống sẽ xử lý ra sao?",
+    "expected_answer": "Việc dùng nền tảng Paygate để thanh toán lương trực tiếp từ Tài khoản Vốn FDI là bị nghiêm cấm hoàn toàn. Hành động bán ngoại tệ và chuyển VND ngay cho nhiều cá nhân trong vòng 24 giờ sẽ kích hoạt kịch bản AML 'FDI Pass-through' (do dưới 48 giờ). Hệ thống sẽ đóng băng số tiền tại ngân hàng thụ hưởng, phong tỏa chiều ghi nợ (Debit Block) của Tài khoản Vốn FDI và tự động gửi báo cáo STR đến Cơ quan Phòng chống rửa tiền.",
+    "trap_explanation": "Kết hợp quy định cấm dùng Paygate cho tài khoản FDI và kỹ thuật phát hiện rửa tiền 'FDI Pass-through' với giới hạn thời gian (48h) và hành vi chuyển tiền cho cá nhân."
+  }
+]

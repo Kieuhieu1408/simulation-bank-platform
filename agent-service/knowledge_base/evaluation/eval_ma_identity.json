@@ -1,0 +1,27 @@
+[
+  {
+    "question": "Theo quy định của Ngân hàng Mô phỏng, khi Công ty Minh An sáp nhập vào một pháp nhân khác, hạn mức gộp cho hệ thống Paygate được tính toán như thế nào và có những ngoại lệ nào cần lưu ý về mặt kết nối API?",
+    "expected_answer": "Dựa trên NV1-122 khoản D01, hạn mức gộp không được cộng dồn cơ học mà bằng Max(A,B) + 30% Min(A,B) hoặc bị cắt giảm (haircut) 15% tổng hạn mức nếu có nợ quá hạn nhóm 2. Ngoài ra, theo NV1-132 khoản D01 và D02, Công ty Minh An sử dụng giao thức XML SOAP cũ, nên hệ thống yêu cầu một Middleware Adapter chuyên biệt để duy trì kết nối API trong suốt 7 ngày chạy song song (quy định tại NV1-124 khoản D01). Ngân hàng miễn trừ trách nhiệm bồi thường nếu xảy ra timeout.",
+    "trap_explanation": "Câu hỏi yêu cầu kết hợp chính sách tính hạn mức gộp (NV1-122) và đặc thù kỹ thuật tích hợp API của riêng Công ty Minh An (NV1-132, NV1-124). Nếu RAG chỉ tìm thấy luật chung tính toán hạn mức mà bỏ qua legacy XML protocol và adapter middleware, câu trả lời sẽ thiếu chính xác."
+  },
+  {
+    "question": "Trong giai đoạn quá độ M&A của Công ty Minh An, nếu phát sinh sự cố giao dịch lỗi (Chargeback) trên Paygate, ai sẽ phải chịu trách nhiệm, và làm thế nào để gỡ bỏ ràng buộc này?",
+    "expected_answer": "Theo NV1-121 khoản D02, trong vòng 45 ngày kể từ ngày sáp nhập, cả pháp nhân bị sáp nhập (đại diện cũ) và pháp nhân nhận sáp nhập (đại diện mới) phải chịu trách nhiệm liên đới (Joint Liability) đối với mọi lỗi giao dịch trên Paygate. Để gỡ bỏ, Công ty Minh An phải cung cấp biên bản thanh lý hợp đồng đại diện pháp luật cũ, có công chứng và được phê duyệt bởi Khối Pháp chế Ngân hàng Mô phỏng, đồng thời có thể cần Báo cáo kiểm toán bên thứ 3 nếu có xung đột vai trò kép theo NV1-128 khoản D01.",
+    "trap_explanation": "Bẫy nằm ở chỗ RAG có thể chỉ nêu NĐDPL mới hoặc cũ chịu trách nhiệm mà thiếu khái niệm 'Joint Liability' (trách nhiệm liên đới) và quy trình chuẩn bị biên bản thanh lý được phê duyệt bởi Khối Pháp chế (NV1-121)."
+  },
+  {
+    "question": "Làm thế nào Ngân hàng Mô phỏng xử lý tình trạng lưu lượng thanh toán của Công ty Minh An khi họ bị mua lại nhưng số Đăng ký Kinh doanh cũ chưa được vô hiệu hóa, dẫn đến cảnh báo trùng lặp CIF?",
+    "expected_answer": "Theo NV1-123 khoản D01, hệ thống sẽ sinh ra Cảnh báo Trùng lặp (Overlap Alert) và tự động phong tỏa toàn bộ luồng thanh toán T+1 của cả hai MID, giam tiền tại Suspense Account. Để mở khóa, theo khoản D02, NĐDPL mới phải đệ trình Mẫu EID-09 và vượt qua kiểm tra AML/CFT toàn diện để được cấp CIF Master tạm thời (60 ngày), trong đó giao dịch trên 1 tỷ VNĐ cần Dual Approval (theo NV1-128 khoản D02).",
+    "trap_explanation": "RAG cần xâu chuỗi hiện tượng phong tỏa vào Suspense Account do Overlap Alert và quy trình gỡ phong tỏa (Mẫu EID-09, kiểm tra AML/CFT, CIF tạm thời 60 ngày). Việc bỏ sót yêu cầu Dual Approval cho giao dịch lớn (cross-reference NV1-128) là lỗi phổ biến."
+  },
+  {
+    "question": "Tại sao một cá nhân làm Giám đốc của pháp nhân bị sáp nhập lại bị khóa chứng thư số trên hệ thống eBanking của Ngân hàng Mô phỏng khi trở thành Kế toán trưởng của pháp nhân nhận sáp nhập, và cách khắc phục là gì?",
+    "expected_answer": "Dựa trên NV1-128 khoản D01, đây là lỗi 'Vai trò Kép' (Dual-Role Conflict) vi phạm quy tắc phân quyền (Segregation of Duties). Một cá nhân không được kiêm nhiệm vai trò Maker và Checker trên cùng một cấu hình Paygate. Theo khoản D02, để khắc phục, Công ty Minh An bắt buộc phải nộp Báo cáo Kiểm toán Nội bộ từ bên thứ 3 xác nhận Org Chart mới. Sau đó, chức năng phê duyệt của cá nhân đó sẽ bị ép buộc ở chế độ 'Dual Approval' với một Giám đốc khối khác, không có ngoại lệ.",
+    "trap_explanation": "Đánh giá khả năng hiểu chính sách Segregation of Duties. RAG có thể khuyên người dùng nộp biên bản họp Đại hội đồng Cổ đông thông thường, nhưng luật NV1-128 khoản D02 cấm điều này và bắt buộc phải có Báo cáo kiểm toán nội bộ bên thứ 3."
+  },
+  {
+    "question": "Quy trình gộp hạn mức tín dụng sau sáp nhập đối với các CIF có yêu cầu gì về tài khoản ký quỹ (Escrow) tại Ngân hàng Mô phỏng để phòng ngừa rủi ro hỏng dữ liệu và tín dụng chồng chéo?",
+    "expected_answer": "Quy trình yêu cầu 2 loại ký quỹ. Thứ nhất, theo NV1-131 khoản D02, nếu Công ty Minh An muốn giữ phần hạn mức vượt trần (chồng chéo), họ phải ký quỹ 100% bằng tiền mặt và đẩy doanh thu Paygate về Escrow Account trong 6 tháng. Thứ hai, theo NV1-133 khoản D02, để phòng rủi ro hỏng dữ liệu (Data Corruption), hệ thống tự động trích lập 10% tổng lưu lượng thanh toán vào Holdback Escrow trong 30 ngày của Deduplication Window để dự phòng giao dịch kép hoặc chargeback.",
+    "trap_explanation": "Một câu hỏi 'double-trap' đòi hỏi RAG phân biệt giữa 'Holdback Escrow' 10% trong 30 ngày (dành cho rủi ro dữ liệu/trùng lặp - NV1-133) và 'Cash Backed Escrow' 100% doanh thu trong 6 tháng (dành cho rủi ro tín dụng chồng chéo/vượt trần - NV1-131)."
+  }
+]

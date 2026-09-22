@@ -1,0 +1,27 @@
+[
+  {
+    "question": "If a customer makes a loan repayment via Paygate during an unplanned core outage that takes 5 hours to resolve, and the transaction times out causing a late fee, what steps does Ngân hàng Mô phỏng take regarding the late fee and liquidity buffers?",
+    "expected_answer": "Ngân hàng Mô phỏng's Auto-Refund daemon will automatically post a fee reversal to the customer's account because the late fee (LATE_FEE_55) correlates with a logged Paygate timeout event within a 48-hour window (COM-112). Additionally, because the outage exceeded 4 hours, the manual funding protocol is activated, inflating liquidity buffers for central clearing Nostro accounts by 150% to prevent settlement rejections (COM-103).",
+    "trap_explanation": "Requires cross-referencing the 4-hour liquidity buffer rule in COM-103 with the Paygate auto-refund rules in COM-112, ensuring the agent doesn't just mention the fee reversal but also the systemic liquidity actions."
+  },
+  {
+    "question": "During a 3-day unplanned public holiday, a corporate client initiates a large deposit. How are the interest accrual and settlement processing handled on the first business day?",
+    "expected_answer": "The system modifies the calendar using the HOLIDAY_INJECT script, shifting T+2 settlements forward (COM-111). On the first business day, inbound ACH files parked in ACH_HOLIDAY_HOLD are prioritized by Paygate, with SLA alerts for real-time transfers muted for 2 hours (COM-114). To correct interest accrual misalignments for tier-1 corporate clients, treasury applies the YIELD_ADJ_HOLIDAY parameter to back-date the principal deposit value to the original initiation date (COM-113).",
+    "trap_explanation": "Combines holiday injection (COM-111), day-1 surge queuing rules (COM-114), and manual yield adjustments (COM-113) into a single cohesive answer."
+  },
+  {
+    "question": "What happens if the End-of-Day batch aborts because of a Paygate reconciliation variance, and how are late fees managed during this process?",
+    "expected_answer": "If the EOD batch aborts due to exceeding the VAR_TOLERANCE_MAX threshold (often caused by asynchronous Paygate acknowledgments), a staggered rollback is initiated. Any late fees processed during the failed batch are queued in the REVERSAL_QUEUE_PENDING table. A manual override flag must then be set by IT Ops to resume the corrected batch processing (COM-104).",
+    "trap_explanation": "Directly tests the batch processing failure rules from COM-104, ensuring the agent correctly identifies the REVERSAL_QUEUE_PENDING table rather than confusing it with the auto-refund daemon in COM-112."
+  },
+  {
+    "question": "How does Ngân hàng Mô phỏng handle a Paygate connection glitch with the CITAD gateway that spans across the 16:30 cutoff, and what happens to transactions that time out on the central Paygate bus?",
+    "expected_answer": "For CITAD disconnects spanning past 16:30, the Value Date must be manually overridden to T+1 to avoid central bank penalty fees, while outgoing CITAD transfers above 500M VND are held in suspense (COM-108). For general Paygate timeouts (no ACK within 15 seconds), transactions are set to PENDING_ORPHAN. The hourly SWP_ORPHAN_CRON job queries the central switch and applies a forced GL entry if the transaction was successful at the beneficiary bank (COM-106).",
+    "trap_explanation": "Tests the agent's ability to distinguish between specific CITAD gateway rules (COM-108) and general Paygate timeout orphan sweeps (COM-106)."
+  },
+  {
+    "question": "During a Paygate API outage that triggers high load, what fallback modes are activated for processing and fraud screening, and what post-incident actions are required?",
+    "expected_answer": "When API gateway CPU utilization exceeds 85% for 3 minutes, Paygate toggles to asynchronous mode (AMQP) and displays a slow processing disclaimer to customers (COM-107). If the AML/Fraud API also experiences an outage, transactions under 2,000,000 VND bypass real-time screening and are tagged BYPASS_AML_GLITCH (COM-110). Once restored, post-factum batch analysis is executed, generating alerts for the Compliance Department for retroactive manual review of the bypassed transactions (COM-110).",
+    "trap_explanation": "Links the trigger for asynchronous fallback (COM-107) with the Systemic Risk Triage protocol for fraud screening (COM-110), testing both degraded mode behaviors."
+  }
+]

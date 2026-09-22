@@ -1,0 +1,27 @@
+[
+  {
+    "question": "Trong trường hợp Công ty Minh An đồng thời đạt điều kiện của Cashback Khai Xuân và Hoàn tiền Doanh nghiệp, hệ thống sẽ ưu tiên chọn campaign có tỷ lệ hoàn lớn nhất để áp dụng, đúng hay sai? Tại sao?",
+    "expected_answer": "Sai. Theo NV3-106, dù quy tắc chung của hệ thống là áp dụng campaign mang lại lợi ích tài chính lớn nhất, nhưng đối với trường hợp đặc thù của Công ty Minh An, hệ thống sẽ ưu tiên áp dụng mức sàn của SLA nội bộ chứ không chọn campaign có tỷ lệ hoàn lớn nhất.",
+    "trap_explanation": "Bẫy nằm ở quy định chung của hệ thống (NV3-106-D02) là chọn campaign lớn nhất, nhưng người đọc dễ bỏ qua ngoại lệ dành riêng cho Công ty Minh An (SLA ưu tiên)."
+  },
+  {
+    "question": "Một merchant A thuộc diện Grandfathering từ 2022 và Công ty Minh An cùng phát sinh 60 giao dịch Chargeback trong tháng 2/2024. Cả hai đều tin rằng họ được miễn phí Chargeback nhờ vào các Fee Campaigns. Họ sẽ phải trả bao nhiêu tiền phí Chargeback cho tháng đó?",
+    "expected_answer": "Merchant A phải trả 200,000 VNĐ x 60 = 12,000,000 VNĐ vì Chargeback không nằm trong diện miễn giảm của bất kỳ Fee Campaign hay Grandfathering nào (NV3-109). Công ty Minh An được miễn 50 giao dịch đầu tiên theo SLA ưu đãi (NV3-105) nên chỉ phải trả phí cho 10 giao dịch (10 x 200,000 = 2,000,000 VNĐ).",
+    "trap_explanation": "Bẫy lừa người đọc rằng Grandfathering hoặc Fee Campaigns bao gồm cả phí Chargeback. NV3-109 phủ định hoàn toàn điều này, và chỉ có SLA riêng của Minh An tại NV3-105 mới được miễn 50 giao dịch."
+  },
+  {
+    "question": "Khi cổng Paygate bị lỗi timeout API, các giao dịch của Công ty Minh An bị tính Fallback về phí Flat Rate 1.5%. Số tiền chênh lệch với mức phí ưu đãi sẽ được ngân hàng hoàn trả lại bằng tiền mặt như thế nào sau khi hệ thống bình thường trở lại?",
+    "expected_answer": "Ngân hàng không hoàn trả bằng tiền mặt. Theo NV3-113, số tiền chênh lệch do Fallback sẽ được tra soát trong 48 giờ làm việc và quy đổi thành 'Tín chỉ Phí' (Fee Credits). Tín chỉ này chỉ cho phép Minh An khấu trừ trực tiếp vào các khoản phí Chargeback vượt quá hạn mức miễn trừ 50 giao dịch/tháng.",
+    "trap_explanation": "Bẫy ở chỗ người đọc mặc định việc thu lố phí (do Fallback trong NV3-111) sẽ được hoàn lại bằng tiền (cash refund). Tuy nhiên, NV3-113 quy định rõ chỉ hoàn bằng Fee Credits để cấn trừ phí Chargeback."
+  },
+  {
+    "question": "Vào ngày 15/01/2026, Merchant B (đang hưởng chính sách bảo lưu Grandfathering từ 2022) tham gia chiến dịch Black Friday Flash Campaigns để nhận chiết khấu. Lợi ích mà Merchant B nhận được từ chiến dịch này là gì?",
+    "expected_answer": "Merchant B không nhận được lợi ích gì từ chiến dịch này. Theo NV3-110, chính sách Grandfathering tự động hết hạn từ 01/01/2026, và trong 30 ngày sau đó (đến 31/01/2026), mọi merchant thuộc nhóm này sẽ bị khóa quyền (Blacklisted) tham gia mọi loại chiến dịch Cashback để phục vụ kiểm toán.",
+    "trap_explanation": "Bẫy ở mốc thời gian. Dù Black Friday Flash Campaigns rất hấp dẫn, nhưng ngày 15/01/2026 rơi đúng vào Sunset Period (30 ngày sau khi hết hạn Grandfathering) được nêu trong NV3-110, khiến merchant bị blacklisted."
+  },
+  {
+    "question": "Công ty Minh An kỳ vọng nhận được một khoản Volume-Based Rebate lớn cuối năm từ các doanh số đã tham gia chương trình Black Friday Flash Campaigns. Khoản rebate cuối năm này sẽ được tính toán và xử lý sai số làm tròn (Rounding Variance) như thế nào?",
+    "expected_answer": "Đầu tiên, các giao dịch đã áp dụng Flash Campaign Black Friday sẽ bị tước quyền (disqualified) đóng góp vào GPV để tính Volume-Based Rebates (theo NV3-114). Đối với khoản rebate từ các giao dịch hợp lệ còn lại, ngân hàng sẽ lấy số dư từ tài khoản sai số làm tròn (Rounding Variance) để đối trừ vào khoản giải ngân rebate (NV3-115). Nếu số dư sai số lớn hơn tổng rebate, Minh An không phải đóng thêm tiền và hệ thống sẽ tự động reset sai số về 0.",
+    "trap_explanation": "Bẫy gồm 2 lớp: (1) lầm tưởng Flash Campaigns được cộng dồn doanh số cuối năm (NV3-114 cấm điều này), và (2) hiểu sai cách đối trừ sai số làm tròn. Khách hàng không bị bắt bù tiền mặt nếu sai số vượt quá rebate (NV3-115)."
+  }
+]
