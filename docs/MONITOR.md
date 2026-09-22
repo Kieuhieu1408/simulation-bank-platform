@@ -28,7 +28,7 @@ Dưới đây là danh sách các URL, tài khoản và mật khẩu của các 
 
 | Hệ thống | URL | Username | Password | Ghi chú |
 | :--- | :--- | :--- | :--- | :--- |
-| **Keycloak** | [http://localhost:8080](http://localhost:8080) | `admin` | `admin` | Quản lý IAM, Auth/Token cho toàn hệ thống |
+| **Keycloak** | [http://localhost:8090](http://localhost:8090) | `admin` | `admin` | Quản lý IAM, Auth/Token cho toàn hệ thống |
 | **Vault** | [http://localhost:8200](http://localhost:8200) | - | `root_token` (Token ID) | Quản lý Secret. Tự động init dữ liệu khi chạy |
 
 ---
@@ -40,9 +40,11 @@ Các port dưới đây được cấu hình trực tiếp trong các file `appl
 | Service | Port | Base URL | Cấu hình tại |
 | :--- | :--- | :--- | :--- |
 | **corebank** | `8180` | `http://localhost:8180` | `corebank/src/main/resources/application.yaml` |
-| **money-bank** | `8081` | `http://localhost:8081` | `money-bank/src/main/resources/application.yml` |
+| **money-bank** | `8181` | `http://localhost:8181` | `money-bank/src/main/resources/application.yaml` |
+| **cms** | `8182` | `http://localhost:8182` | `cms/src/main/resources/application.yaml` |
+| **api-gateway** | `8080` | `http://localhost:8080` | `api-gateway/src/main/resources/application.yaml` |
 
-*(Lưu ý: Các service khác như `api-gateway`, `profile-service`, `cms`,... hiện đang trống hoặc chưa được cấu hình port).*
+*(Lưu ý: Các service khác như `profile-service`,... hiện đang trống hoặc chưa được cấu hình port).*
 
 ---
 

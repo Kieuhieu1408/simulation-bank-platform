@@ -9,8 +9,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    clean-disabled: false
-    clean-on-validation-error: true
+    clean-disabled: true          # NEVER drop schema in non-local env
+    clean-on-validation-error: false
     baseline-on-migrate: true
   jpa:
     hibernate:
@@ -24,12 +24,27 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/master}
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}
+      # Client Credentials — dùng để gọi internal service (corebank, profile-service)
+      client:
+        registration:
+          moneybank-internal:
+            client-id: ${OAUTH2_CLIENT_ID:moneybank-service}
+            client-secret: ${OAUTH2_CLIENT_SECRET:moneybank-secret}
+            authorization-grant-type: client_credentials
+            scope: corebank:read, corebank:write
+        provider:
+          moneybank-internal:
+            token-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}/protocol/openid-connect/token
   jackson:
     time-zone: UTC
 
 server:
   port: 8181
+
+# Internal service endpoints
+corebank:
+  url: ${COREBANK_URL:http://localhost:8180}
 
 management:
   endpoints:
@@ -58,3 +73,9 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} traceId=%X{traceId} spanId=%X{spanId} - %msg%n"
 
+
+money-bank:
+  security:
+    jwk-set-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}/protocol/openid-connect/certs
+    issuer: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}
+    audience: moneybank-service

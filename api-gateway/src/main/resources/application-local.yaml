@@ -1,0 +1,16 @@
+# Local development overrides
+# File này chỉ active khi chạy với profile "local" hoặc không set profile
+# Không commit secret thật vào đây
+
+spring:
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 5000   # Tăng timeout khi dev (service khởi động chậm)
+        response-timeout: 60s
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG   # Xem routing decision chi tiết
+    org.springframework.security: DEBUG        # Xem JWT validation steps
+    com.hieu.apigateway: DEBUG

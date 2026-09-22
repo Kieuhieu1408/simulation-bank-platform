@@ -1,0 +1,228 @@
+# ============================================================
+# Simulation Bank Platform — Docker Compose (local dev)
+# ============================================================
+# Port map (host → container):
+#   Keycloak          : 8090 → 8080
+#   Redis             : 6379 → 6379
+#   Oracle DB         : 1521 → 1521
+#   PostgreSQL DB     : 5432 → 5432
+#   Jaeger UI         : 16686 → 16686
+#   Prometheus UI     : 9090 → 9090
+#   Grafana UI        : 3000 → 3000
+#   corebank API      : 8180 → 8180
+#   money-bank API    : 8181 → 8181
+#   cms API           : 8182 → 8182
+#   api-gateway       : 8080 → 8080
+#
+# Khởi động toàn bộ hệ thống:
+#   docker compose up -d
+#
+# Khởi động từng nhóm:
+#   docker compose up -d keycloak redis postgres oracle # infra only
+#   docker compose up -d oracle corebank                # corebank stack
+# ============================================================
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: sim-bank-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+    ports:
+      - "8090:8080"       # host:8090 → keycloak container:8080
+    volumes:
+      - ./docs/keycloak:/opt/keycloak/data/import   # realm export để auto-import
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - sim-bank-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: sim-bank-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sim-bank-net
+
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: sim-bank-oracle
+    environment:
+      ORACLE_PASSWORD: oracle_demo
+      APP_USER: corebank
+      APP_USER_PASSWORD: corebank_demo
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks:
+      - sim-bank-net
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: sim-bank-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: common_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d common_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sim-bank-net
+
+  # ── Observability ───────────────────────────────────────────
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: sim-bank-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # UI
+      - "4318:4318"   # OTLP HTTP
+      - "4317:4317"   # OTLP gRPC
+    networks:
+      - sim-bank-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sim-bank-prometheus
+    volumes:
+      - ./docs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - sim-bank-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sim-bank-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - sim-bank-net
+
+  # ── Application Services ────────────────────────────────────
+
+  corebank:
+    build:
+      context: .
+      dockerfile: corebank/Dockerfile
+    container_name: sim-bank-corebank
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8180/actuator/health/liveness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    environment:
+      DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
+      DB_USERNAME: corebank
+      DB_PASSWORD: corebank_demo
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/simulation-bank
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+    ports:
+      - "8180:8180"       # host:8180 → corebank container:8180
+    depends_on:
+      oracle:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sim-bank-net
+
+  money-bank:
+    build:
+      context: .
+      dockerfile: money-bank/Dockerfile
+    container_name: sim-bank-money-bank
+    environment:
+      DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
+      DB_USERNAME: corebank
+      DB_PASSWORD: corebank_demo
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/simulation-bank
+      COREBANK_URL: http://corebank:8180
+      OAUTH2_CLIENT_ID: moneybank-service
+      OAUTH2_CLIENT_SECRET: moneybank-secret
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+    ports:
+      - "8181:8181"       # host:8181 → money-bank container:8181
+    depends_on:
+      oracle:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      corebank:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sim-bank-net
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: sim-bank-api-gateway
+    environment:
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/simulation-bank
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MONEY_BANK_URL: http://money-bank:8181
+      CMS_BACKEND_URL: http://cms:8182
+      PROFILE_SERVICE_URL: http://profile-service:8080
+      NOTIFICATION_SERVICE_URL: http://notification-service:8080
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+    ports:
+      - "8080:8080"       # host:8080 → api-gateway container:8080 (entry point)
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sim-bank-net
+
+# ── Volumes & Networks ────────────────────────────────────────
+
+volumes:
+  oracle-data:
+  postgres-data:
+
+networks:
+  sim-bank-net:
+    driver: bridge

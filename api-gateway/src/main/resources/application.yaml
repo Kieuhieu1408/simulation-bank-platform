@@ -1,0 +1,180 @@
+spring:
+  application:
+    name: api-gateway
+
+  # ── Security: JWT validation via Keycloak JWKS ─────────────────────────────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Spring Security fetch JWKS từ đây khi startup, cache và tự refresh
+          jwk-set-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}/protocol/openid-connect/certs
+          # Validate issuer claim
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}
+
+  # ── Redis: rate limiting storage ───────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # password: ${REDIS_PASSWORD:} # bật khi production
+
+  # ── Spring Cloud Gateway: CORS + route definitions ──────────────────────────
+  cloud:
+    gateway:
+      # ── CORS: xử lý tập trung tại gateway, backend service KHÔNG cần config CORS ──
+      #
+      # Allowed origins:
+      #   - CMS Frontend   (Angular)  : localhost:4200 (dev) / CMS_FRONTEND_ORIGIN (prod)
+      #   - Profile Frontend (ReactJS): localhost:3000 (dev) / PROFILE_FRONTEND_ORIGIN (prod)
+      #   - Mobile App không cần CORS (không chạy trong browser, không có same-origin policy)
+      #
+      # Tại production: set env var CMS_FRONTEND_ORIGIN, PROFILE_FRONTEND_ORIGIN
+      # với HTTPS domain thực. Không dùng '*' wildcard khi có credentials (JWT cookie/header).
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            # Whitelist các browser origin được phép gọi gateway
+            allowed-origins:
+              - "http://localhost:4200"          # CMS Frontend (Angular) — local dev
+              - "http://localhost:3000"          # Profile Frontend (ReactJS) — local dev
+              - "${CMS_FRONTEND_ORIGIN:}"        # CMS production domain (set ở env)
+              - "${PROFILE_FRONTEND_ORIGIN:}"    # Profile production domain (set ở env)
+            # HTTP methods cho phép — OPTIONS bắt buộc cho preflight request
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            # Headers client được phép gửi
+            allowed-headers:
+              - Authorization
+              - Content-Type
+              - X-Correlation-Id
+              - X-Requested-With
+              - Accept
+              - Origin
+            # Headers client được phép đọc từ response
+            exposed-headers:
+              - X-Correlation-Id
+              - X-RateLimit-Remaining
+              - X-RateLimit-Limit
+              - X-RateLimit-Reset
+            # Cho phép browser gửi credentials (Authorization header, cookie)
+            allow-credentials: true
+            # Preflight response cache: 1 giờ — giảm số OPTIONS request
+            max-age: 3600
+
+      # Default timeout cho tất cả route
+      httpclient:
+        connect-timeout: 3000     # 3s connect timeout
+        response-timeout: 30s     # 30s read timeout
+
+      routes:
+        # ── Route 1: Money Bank ──────────────────────────────────────────────
+        # Client:  GET  /api/v1/money/accounts
+        # Backend: GET  /api/v1/accounts   (money-bank:8181)
+        - id: money-bank-route
+          uri: ${MONEY_BANK_URL:http://localhost:8181}
+          predicates:
+            - Path=/api/v1/money/**
+          filters:
+            # RewritePath giữ nguyên /api/v1/ prefix, chỉ bỏ /money segment
+            - RewritePath=/api/v1/money/(?<segment>.*), /api/v1/$\{segment}
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: ${RATE_LIMIT_USER_RPS:5}
+                redis-rate-limiter.burstCapacity: ${RATE_LIMIT_USER_BURST:10}
+                key-resolver: "#{@userOrIpKeyResolver}"
+
+        # ── Route 2: CMS Backend ─────────────────────────────────────────────
+        # Client:  GET  /api/v1/cms/customers
+        # Backend: GET  /api/v1/customers  (cms-backend:8182)
+        - id: cms-backend-route
+          uri: ${CMS_BACKEND_URL:http://localhost:8182}
+          predicates:
+            - Path=/api/v1/cms/**
+          filters:
+            - RewritePath=/api/v1/cms/(?<segment>.*), /api/v1/$\{segment}
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: ${RATE_LIMIT_USER_RPS:5}
+                redis-rate-limiter.burstCapacity: ${RATE_LIMIT_USER_BURST:10}
+                key-resolver: "#{@userOrIpKeyResolver}"
+
+        # ── Route 3: Profile Service ─────────────────────────────────────────
+        # Client:  GET  /api/v1/profiles/me
+        # Backend: GET  /api/v1/me  (profile-service:8183)
+        - id: profile-service-route
+          uri: ${PROFILE_SERVICE_URL:http://localhost:8183}
+          predicates:
+            - Path=/api/v1/profiles/**
+          filters:
+            - RewritePath=/api/v1/profiles/(?<segment>.*), /api/v1/$\{segment}
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: ${RATE_LIMIT_USER_RPS:5}
+                redis-rate-limiter.burstCapacity: ${RATE_LIMIT_USER_BURST:10}
+                key-resolver: "#{@userOrIpKeyResolver}"
+
+        # ── Route 4: Notification Service ────────────────────────────────────
+        # Client:  GET  /api/v1/notifications/inbox
+        # Backend: GET  /api/v1/inbox  (notification-service:8184)
+        - id: notification-service-route
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8184}
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - RewritePath=/api/v1/notifications/(?<segment>.*), /api/v1/$\{segment}
+
+        # ── Không có route cho corebank (internal only) ──────────────────────
+        # corebank chỉ được gọi bởi money-bank và profile-service qua internal network
+
+# ── Server ──────────────────────────────────────────────────────────────────
+server:
+  port: ${SERVER_PORT:8080}
+
+# ── Rate Limit Config (dùng trong RateLimiterConfig.java) ───────────────────
+gateway:
+  rate-limit:
+    user:
+      replenish-rate: ${RATE_LIMIT_USER_RPS:5}      # token/giây per user
+      burst-capacity: ${RATE_LIMIT_USER_BURST:10}    # burst tối đa
+    ip:
+      replenish-rate: ${RATE_LIMIT_IP_RPS:1}         # token/giây per IP
+      burst-capacity: ${RATE_LIMIT_IP_BURST:5}
+
+# ── Actuator & Observability ─────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  metrics:
+    tags:
+      application: api-gateway
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    com.hieu.apigateway: DEBUG
+    # Bật để debug routing và filter chain
+    org.springframework.cloud.gateway: INFO
+    # Bật để debug JWT validation
+    org.springframework.security: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

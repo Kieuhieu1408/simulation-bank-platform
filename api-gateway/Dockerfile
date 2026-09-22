@@ -8,12 +8,12 @@ COPY corebank/pom.xml corebank/
 COPY money-bank/pom.xml money-bank/
 
 COPY common-service/src common-service/src
-COPY corebank/src corebank/src
+COPY api-gateway/src api-gateway/src
 
-RUN mvn -B -q -DskipTests package -pl corebank -am
+RUN mvn -B -q -DskipTests package -pl api-gateway -am
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY --from=build /workspace/corebank/target/*.jar app.jar
+COPY --from=build /workspace/api-gateway/target/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

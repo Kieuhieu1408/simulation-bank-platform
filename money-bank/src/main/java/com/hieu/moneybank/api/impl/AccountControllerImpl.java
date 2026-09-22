@@ -9,7 +9,7 @@ import com.hieu.moneybank.dto.response.CardResponseDTO;
 import com.hieu.moneybank.dto.response.TransferResponseDTO;
 import com.hieu.moneybank.handler.command.card.IssueCardCommandHandler.IssueCardCommand;
 import com.hieu.moneybank.handler.query.account.GetAccountBalanceQueryHandler.GetAccountBalanceQuery;
-import com.hieu.moneybank.handler.query.account.GetAccountByIdQueryHandler.GetAccountByIdQuery;
+import com.hieu.moneybank.handler.query.account.GetAccountByIdQueryHandler.GetAccountByIdQueryRequestDTO;
 import com.hieu.moneybank.handler.query.transfer.GetTransferHistoryQueryHandler.GetTransferHistoryQuery;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -29,7 +29,7 @@ public class AccountControllerImpl extends BaseController implements AccountCont
 
     @Override
     public ResponseEntity<AccountResponseDTO> get(String id) {
-        return executeQuery(new GetAccountByIdQuery(id), AccountResponseDTO.class);
+        return executeQuery(new GetAccountByIdQueryRequestDTO(id), AccountResponseDTO.class);
     }
 
     @Override

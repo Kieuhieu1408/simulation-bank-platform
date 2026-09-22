@@ -3,51 +3,60 @@ package com.hieu.moneybank.client;
 import com.hieu.moneybank.dto.request.TransferRequestDTO;
 import com.hieu.moneybank.dto.response.TransferResponseDTO;
 import com.hieu.moneybank.exception.BusinessException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
+/**
+ * Client gọi Corebank qua OAuth2 Client Credentials.
+ *
+ * WebClient được inject từ {@link com.hieu.moneybank.config.WebClientConfig}
+ * với filter tự động lấy token từ Keycloak (registration: moneybank-internal)
+ * trước mỗi request — không forward token của user cuối.
+ *
+ * Corebank sẽ nhận token có scope "corebank:read" / "corebank:write"
+ * và authorize theo scope đó tại SecurityConfig của mình.
+ */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class CorebankClient {
 
-    private final RestTemplate restTemplate;
+    private final WebClient corebankWebClient;
 
     @Value("${corebank.url:http://localhost:8180}")
     private String corebankBaseUrl;
 
-    public TransferResponseDTO executeTransfer(TransferRequestDTO request) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        
-        // Forward token từ request hiện tại
-        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attributes != null) {
-            String token = attributes.getRequest().getHeader(HttpHeaders.AUTHORIZATION);
-            if (token != null) {
-                headers.set(HttpHeaders.AUTHORIZATION, token);
-            }
-        }
+    public CorebankClient(@Qualifier("corebankWebClient") WebClient corebankWebClient) {
+        this.corebankWebClient = corebankWebClient;
+    }
 
-        HttpEntity<TransferRequestDTO> entity = new HttpEntity<>(request, headers);
-        String url = corebankBaseUrl + "/api/v1/transfers";
-        
-        try {
-            log.info("Calling corebank to execute transfer: {}", url);
-            ResponseEntity<TransferResponseDTO> response = restTemplate.postForEntity(url, entity, TransferResponseDTO.class);
-            return response.getBody();
-        } catch (Exception e) {
-            log.error("Failed to call corebank for transfer", e);
-            throw new BusinessException("Chuyển tiền thất bại tại Corebank: " + e.getMessage());
-        }
+    public TransferResponseDTO executeTransfer(TransferRequestDTO request) {
+        log.info("Calling corebank to execute transfer to account: {}", request.getDestinationAccountId());
+
+        return corebankWebClient
+                .post()
+                .uri(corebankBaseUrl + "/api/v1/transfers")
+                .bodyValue(request)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, response ->
+                        response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(
+                                        new BusinessException("Corebank từ chối yêu cầu [" + response.statusCode() + "]: " + body)
+                                ))
+                )
+                .onStatus(HttpStatusCode::is5xxServerError, response ->
+                        response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(
+                                        new BusinessException("Corebank lỗi nội bộ [" + response.statusCode() + "]: " + body)
+                                ))
+                )
+                .bodyToMono(TransferResponseDTO.class)
+                .doOnError(e -> log.error("Failed to call corebank for transfer", e))
+                .block(); // blocking vì corebank handler hiện tại là synchronous
     }
 }
