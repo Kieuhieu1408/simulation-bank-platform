@@ -37,12 +37,12 @@
     <!-- Root logger -->
     <root level="INFO">
         <appender-ref ref="JSON_CONSOLE"/>
-        <appender-ref ref="LOKI"/>
+        <!-- <appender-ref ref="LOKI"/> -->
     </root>
 
     <logger name="com.hieu.moneybank" level="DEBUG" additivity="false">
         <appender-ref ref="JSON_CONSOLE"/>
-        <appender-ref ref="LOKI"/>
+        <!-- <appender-ref ref="LOKI"/> -->
     </logger>
 
     <!-- Giảm noise từ Hibernate SQL -->
@@ -52,6 +52,6 @@
     <!-- Enable DEBUG logs cho CommonsRequestLoggingFilter -->
     <logger name="org.springframework.web.filter.CommonsRequestLoggingFilter" level="DEBUG" additivity="false">
         <appender-ref ref="JSON_CONSOLE"/>
-        <appender-ref ref="LOKI"/>
+        <!-- <appender-ref ref="LOKI"/> -->
     </logger>
 </configuration>

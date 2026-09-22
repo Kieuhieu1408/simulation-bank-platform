@@ -10,3 +10,9 @@ spring:
     open-in-view: false
   main:
     banner-mode: off
+
+money-bank:
+  security:
+    audience: test-audience
+    issuer: test-issuer
+    jwkSetUri: http://localhost:8080/certs

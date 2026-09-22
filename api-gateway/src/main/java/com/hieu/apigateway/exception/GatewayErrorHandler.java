@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
+import org.springframework.web.server.WebExceptionHandler;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
@@ -36,12 +36,8 @@ import java.util.Map;
 @Slf4j
 @Component
 @Order(-2) // Phải cao hơn default WebFlux error handler (order -1)
-
 @RequiredArgsConstructor
-public class GatewayErrorHandler implements ErrorWebExceptionHandler {
-
-    
-        
+public class GatewayErrorHandler implements WebExceptionHandler {
 
     private final ObjectMapper objectMapper;
 
