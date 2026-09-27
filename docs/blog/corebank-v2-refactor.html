@@ -1,0 +1,911 @@
+<title>Corebank V2 Refactor</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --bg:        #0F1117;
+    --surface:   #1A1F2E;
+    --surface2:  #232938;
+    --border:    #2D3447;
+    --accent:    #3B82F6;
+    --accent-dim:#1D4ED8;
+    --green:     #10B981;
+    --amber:     #F59E0B;
+    --red:       #EF4444;
+    --text:      #F1F5F9;
+    --text-dim:  #94A3B8;
+    --text-mute: #64748B;
+    --code-bg:   #0D1117;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg:       #F8FAFC;
+      --surface:  #FFFFFF;
+      --surface2: #F1F5F9;
+      --border:   #E2E8F0;
+      --text:     #0F172A;
+      --text-dim: #475569;
+      --text-mute:#94A3B8;
+      --code-bg:  #1E293B;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:       #0F1117;
+    --surface:  #1A1F2E;
+    --surface2: #232938;
+    --border:   #2D3447;
+    --text:     #F1F5F9;
+    --text-dim: #94A3B8;
+    --code-bg:  #0D1117;
+    color-scheme: dark;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: flex;
+    min-height: 100%;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding-inline: 16px;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    padding-block: 48px 32px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .sidebar-logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sidebar-logo::before {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .nav-group { margin-bottom: 24px; }
+  .nav-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+    padding-left: 4px;
+  }
+  .nav-link {
+    display: block;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: background .15s, color .15s;
+    cursor: pointer;
+  }
+  .nav-link:hover, .nav-link.active {
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .nav-link.active { color: var(--accent); }
+
+  /* ── Main ── */
+  .main {
+    flex: 1;
+    min-width: 0;
+    padding: 48px 0 80px 48px;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    margin-bottom: 56px;
+    padding-bottom: 40px;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .hero h1 {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.2;
+    text-wrap: balance;
+    margin-bottom: 16px;
+    letter-spacing: -.02em;
+  }
+  .hero-sub {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 600px;
+    margin-bottom: 24px;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-mute);
+  }
+  .meta-row span { display: flex; align-items: center; gap: 6px; }
+
+  /* ── Sections ── */
+  .section { margin-bottom: 64px; scroll-margin-top: 24px; }
+  .section-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-title .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text-mute);
+    letter-spacing: .06em;
+  }
+  h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    margin-top: 28px;
+    color: var(--text);
+  }
+  p { color: var(--text-dim); margin-bottom: 14px; }
+
+  /* ── Pain/Win cards ── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .card-icon { font-size: 20px; margin-bottom: 10px; }
+  .card-title { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+  .card p { font-size: 13px; color: var(--text-dim); margin-bottom: 0; }
+  .card.pain  { border-left: 3px solid var(--red); }
+  .card.win   { border-left: 3px solid var(--green); }
+  .card.trade { border-left: 3px solid var(--amber); }
+
+  /* ── Architecture diagram ── */
+  .arch-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .arch-header {
+    padding: 12px 20px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-mute);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dot-red    { background: #EF4444; }
+  .dot-amber  { background: #F59E0B; }
+  .dot-green  { background: #10B981; }
+  .arch-body { padding: 24px; }
+
+  /* ── Flow diagram ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+    padding-left: 20px;
+  }
+  .flow::before {
+    content: '';
+    position: absolute;
+    left: 7px; top: 12px; bottom: 12px;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--accent), var(--green));
+    border-radius: 2px;
+  }
+  .flow-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 10px 0;
+    position: relative;
+  }
+  .flow-dot {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--bg);
+    flex-shrink: 0;
+    margin-left: -27px;
+    margin-top: 2px;
+    position: relative;
+    z-index: 1;
+  }
+  .flow-dot.success { border-color: var(--green); }
+  .flow-dot.fail    { border-color: var(--red); }
+  .flow-content { flex: 1; }
+  .flow-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 2px;
+  }
+  .flow-label.success { color: var(--green); }
+  .flow-label.fail    { color: var(--red); }
+  .flow-desc { font-size: 13px; color: var(--text-dim); }
+
+  /* ── Code blocks ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    margin-bottom: 20px;
+  }
+  .kw  { color: #C792EA; }
+  .cl  { color: #FFCB6B; }
+  .fn  { color: #82AAFF; }
+  .st  { color: #C3E88D; }
+  .cm  { color: #546E7A; font-style: italic; }
+  .nb  { color: #F78C6C; }
+  .op  { color: #89DDFF; }
+
+  /* ── Comparison table ── */
+  .compare {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+  .compare th {
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: .04em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .compare td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    vertical-align: top;
+  }
+  .compare tr:last-child td { border-bottom: none; }
+  .compare tr:hover td { background: var(--surface2); }
+  .tag-bad  { color: var(--red);   font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .tag-good { color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+  /* ── Schema box ── */
+  .schema-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .schema-table {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .schema-table-header {
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .schema-side { font-size: 10px; color: var(--text-mute); letter-spacing: .08em; text-transform: uppercase; }
+  .schema-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .schema-row:last-child { border-bottom: none; }
+  .schema-col { font-family: 'JetBrains Mono', monospace; color: var(--text-dim); }
+  .schema-type { color: var(--text-mute); font-size: 11px; }
+  .schema-key { color: var(--amber); }
+  .schema-lock { color: var(--accent); }
+  .schema-new { color: var(--green); }
+
+  /* ── Checklist ── */
+  .checklist { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .checklist li {
+    display: flex; align-items: flex-start; gap: 10px;
+    font-size: 13px; color: var(--text-dim);
+  }
+  .checklist li .icon { flex-shrink: 0; margin-top: 1px; }
+  .check-done  { color: var(--green); }
+  .check-phase { color: var(--text-mute); font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-top: 16px; margin-bottom: 4px; letter-spacing: .08em; text-transform: uppercase; }
+
+  /* ── File tree ── */
+  .file-tree {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 2;
+    color: var(--text-dim);
+  }
+  .ft-new  { color: var(--green); }
+  .ft-mod  { color: var(--amber); }
+  .ft-keep { color: var(--text-mute); }
+  .ft-dir  { color: var(--accent); font-weight: 500; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { padding-left: 0; }
+    .schema-grid { grid-template-columns: 1fr; }
+    .card-grid { grid-template-columns: 1fr; }
+    .layout { padding-inline: 16px; }
+  }
+</style>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">Corebank V2</div>
+
+    <div class="nav-group">
+      <div class="nav-label">Overview</div>
+      <a class="nav-link active" onclick="scrollTo('hero')">Introduction</a>
+      <a class="nav-link" onclick="scrollTo('painpoints')">Pain Points</a>
+      <a class="nav-link" onclick="scrollTo('architecture')">Architecture</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Write Side</div>
+      <a class="nav-link" onclick="scrollTo('events')">Domain Events</a>
+      <a class="nav-link" onclick="scrollTo('aggregate')">Aggregate</a>
+      <a class="nav-link" onclick="scrollTo('eventstore')">Event Store</a>
+      <a class="nav-link" onclick="scrollTo('optimistic')">Optimistic Lock</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Read Side</div>
+      <a class="nav-link" onclick="scrollTo('schema')">Schema</a>
+      <a class="nav-link" onclick="scrollTo('projector')">Projector</a>
+      <a class="nav-link" onclick="scrollTo('balance')">Actual vs Available</a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Delivery</div>
+      <a class="nav-link" onclick="scrollTo('saga')">Saga / Transfer Flow</a>
+      <a class="nav-link" onclick="scrollTo('files')">Files Changed</a>
+      <a class="nav-link" onclick="scrollTo('tradeoffs')">Trade-offs</a>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- Hero -->
+    <div class="hero" id="hero">
+      <div class="hero-eyebrow">Architecture Decision Record</div>
+      <h1>Corebank V2:<br>True CQRS + Event Sourcing</h1>
+      <p class="hero-sub">
+        Refactoring the Core Banking service from State-based CRUD to an
+        Event-Sourced, dual-database architecture — eliminating pessimistic locks,
+        adding Actual vs Available balance, and building a proper audit ledger.
+      </p>
+      <div class="meta-row">
+        <span>📅 2026-09-27</span>
+        <span>✍️ Hieu Quoc Kieu</span>
+        <span>🟢 Compile: PASS</span>
+        <span>📦 Spring Boot 4.1 · Java 25 · Oracle</span>
+      </div>
+    </div>
+
+    <!-- Pain Points -->
+    <section class="section" id="painpoints">
+      <div class="section-title">V1 Pain Points <span class="badge">WHY REFACTOR</span></div>
+      <p>V1 had CQRS at the <em>code layer</em> only — both Command and Query still hit the same database table. Three structural problems made this untenable at scale.</p>
+      <div class="card-grid">
+        <div class="card pain">
+          <div class="card-icon">🔒</div>
+          <div class="card-title">Pessimistic Lock Bottleneck</div>
+          <p><code>SELECT … FOR UPDATE</code> on two account rows. Threads serialize. Deadlock risk grows with TPS. Even required custom ID-sort logic to avoid it.</p>
+        </div>
+        <div class="card pain">
+          <div class="card-icon">🗑️</div>
+          <div class="card-title">CRUD Destroys Audit History</div>
+          <p><code>account.debit()</code> overwrites the <code>balance</code> column. The past is gone. If the DB drifts from the transaction table, there is no ground truth to recover from.</p>
+        </div>
+        <div class="card pain">
+          <div class="card-icon">🪣</div>
+          <div class="card-title">One Balance for Two Purposes</div>
+          <p>A single <code>balance</code> column cannot represent a pending deduction. Double-spending window exists between transfer initiation and confirmation.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="section" id="architecture">
+      <div class="section-title">V2 Architecture <span class="badge">DUAL DATABASE</span></div>
+      <p>Write and Read are now fully separated — different tables, different responsibilities, different optimization targets.</p>
+
+      <div class="arch-box">
+        <div class="arch-header">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-amber"></div>
+          <div class="dot dot-green"></div>
+          &nbsp; system-architecture.svg
+        </div>
+        <div class="arch-body">
+          <svg viewBox="0 0 720 360" style="width:100%;max-width:720px;display:block;margin:0 auto" font-family="JetBrains Mono, monospace">
+            <!-- Write Side box -->
+            <rect x="20" y="20" width="300" height="200" rx="10" fill="#1A1F2E" stroke="#3B82F6" stroke-width="1.5"/>
+            <text x="170" y="46" text-anchor="middle" fill="#3B82F6" font-size="11" font-weight="600" letter-spacing="1">WRITE SIDE — EVENT STORE</text>
+
+            <!-- domain_events table -->
+            <rect x="36" y="58" width="120" height="140" rx="6" fill="#0D1117" stroke="#2D3447"/>
+            <text x="96" y="75" text-anchor="middle" fill="#82AAFF" font-size="10" font-weight="600">domain_events</text>
+            <line x1="36" y1="80" x2="156" y2="80" stroke="#2D3447"/>
+            <text x="44" y="93" fill="#F59E0B" font-size="9">🔑 event_id</text>
+            <text x="44" y="107" fill="#94A3B8" font-size="9">   aggregate_id</text>
+            <text x="44" y="121" fill="#94A3B8" font-size="9">   version</text>
+            <text x="44" y="135" fill="#10B981" font-size="9">🔒 UNIQUE(id,ver)</text>
+            <text x="44" y="149" fill="#94A3B8" font-size="9">   event_type</text>
+            <text x="44" y="163" fill="#94A3B8" font-size="9">   payload CLOB</text>
+            <text x="44" y="177" fill="#94A3B8" font-size="9">   occurred_at</text>
+
+            <!-- snapshots table -->
+            <rect x="170" y="58" width="132" height="140" rx="6" fill="#0D1117" stroke="#2D3447"/>
+            <text x="236" y="75" text-anchor="middle" fill="#82AAFF" font-size="10" font-weight="600">snapshots</text>
+            <line x1="170" y1="80" x2="302" y2="80" stroke="#2D3447"/>
+            <text x="178" y="93" fill="#F59E0B" font-size="9">🔑 aggregate_id</text>
+            <text x="178" y="107" fill="#94A3B8" font-size="9">   version</text>
+            <text x="178" y="121" fill="#94A3B8" font-size="9">   payload CLOB</text>
+            <text x="178" y="135" fill="#64748B" font-size="9">   every 50 events</text>
+
+            <!-- outbox badge -->
+            <rect x="36" y="208" width="268" height="22" rx="5" fill="#1D4ED8" opacity="0.4"/>
+            <text x="170" y="222" text-anchor="middle" fill="#93C5FD" font-size="10">outbox_event → Kafka → Projector</text>
+
+            <!-- Arrow down-right -->
+            <line x1="330" y1="119" x2="400" y2="119" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+            <text x="362" y="112" text-anchor="middle" fill="#3B82F6" font-size="9">@EventListener</text>
+
+            <!-- Read Side box -->
+            <rect x="400" y="20" width="300" height="200" rx="10" fill="#1A1F2E" stroke="#10B981" stroke-width="1.5"/>
+            <text x="550" y="46" text-anchor="middle" fill="#10B981" font-size="11" font-weight="600" letter-spacing="1">READ SIDE — PROJECTIONS</text>
+
+            <!-- account_view -->
+            <rect x="416" y="58" width="120" height="140" rx="6" fill="#0D1117" stroke="#2D3447"/>
+            <text x="476" y="75" text-anchor="middle" fill="#82AAFF" font-size="10" font-weight="600">account_view</text>
+            <line x1="416" y1="80" x2="536" y2="80" stroke="#2D3447"/>
+            <text x="424" y="93" fill="#F59E0B" font-size="9">🔑 account_id</text>
+            <text x="424" y="107" fill="#94A3B8" font-size="9">   actual_balance</text>
+            <text x="424" y="121" fill="#10B981" font-size="9">★  available_balance</text>
+            <text x="424" y="135" fill="#94A3B8" font-size="9">   status</text>
+            <text x="424" y="149" fill="#94A3B8" font-size="9">   last_event_ver</text>
+
+            <!-- tx_history_view -->
+            <rect x="550" y="58" width="132" height="140" rx="6" fill="#0D1117" stroke="#2D3447"/>
+            <text x="616" y="75" text-anchor="middle" fill="#82AAFF" font-size="10" font-weight="600">tx_history_view</text>
+            <line x1="550" y1="80" x2="682" y2="80" stroke="#2D3447"/>
+            <text x="558" y="93" fill="#F59E0B" font-size="9">🔑 id</text>
+            <text x="558" y="107" fill="#94A3B8" font-size="9">   account_id</text>
+            <text x="558" y="121" fill="#94A3B8" font-size="9">   direction</text>
+            <text x="558" y="135" fill="#10B981" font-size="9">★  balance_after</text>
+            <text x="558" y="149" fill="#94A3B8" font-size="9">   event_type</text>
+            <text x="558" y="163" fill="#94A3B8" font-size="9">   occurred_at</text>
+
+            <!-- Bottom labels -->
+            <text x="170" y="265" text-anchor="middle" fill="#64748B" font-size="10">AccountAggregate on RAM</text>
+            <text x="170" y="280" text-anchor="middle" fill="#64748B" font-size="10">Validate via availableBalance</text>
+            <text x="170" y="295" text-anchor="middle" fill="#64748B" font-size="10">INSERT only — no UPDATE/DELETE</text>
+
+            <text x="550" y="265" text-anchor="middle" fill="#64748B" font-size="10">SELECT for UI — blazing fast</text>
+            <text x="550" y="280" text-anchor="middle" fill="#64748B" font-size="10">Idempotency via last_event_version</text>
+            <text x="550" y="295" text-anchor="middle" fill="#64748B" font-size="10">Rebuild anytime from events</text>
+
+            <!-- Command flow -->
+            <text x="170" y="340" text-anchor="middle" fill="#3B82F6" font-size="10">TransferCommand → EventStore.append()</text>
+            <text x="550" y="340" text-anchor="middle" fill="#10B981" font-size="10">GET /balance → AccountViewRepository</text>
+
+            <defs>
+              <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#3B82F6"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- Domain Events -->
+    <section class="section" id="events">
+      <div class="section-title">Domain Events <span class="badge">WRITE SIDE</span></div>
+      <p>Every state change is recorded as an immutable fact. No <code>UPDATE</code> or <code>DELETE</code> ever touches the event store.</p>
+
+      <table class="compare">
+        <thead>
+          <tr>
+            <th>Event</th>
+            <th>actual_balance</th>
+            <th>available_balance</th>
+            <th>Trigger</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>AccountCreated</code></td><td class="tag-good">= initialBalance</td><td class="tag-good">= initialBalance</td><td>CreateAccount command</td></tr>
+          <tr><td><code>FundsReserved</code></td><td>unchanged</td><td class="tag-bad">−= amount</td><td>Transfer initiated</td></tr>
+          <tr><td><code>TransferCompleted</code></td><td class="tag-bad">−= amount</td><td>unchanged</td><td>Destination confirmed</td></tr>
+          <tr><td><code>TransferFailed</code></td><td>unchanged</td><td class="tag-good">+= amount (rollback)</td><td>Destination failed</td></tr>
+          <tr><td><code>FundsDeposited</code></td><td class="tag-good">+= amount</td><td class="tag-good">+= amount</td><td>Incoming transfer</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Aggregate -->
+    <section class="section" id="aggregate">
+      <div class="section-title">AccountAggregate <span class="badge">IN-MEMORY</span></div>
+      <p><code>AccountAggregate</code> is <strong>not</strong> a JPA entity. It lives purely on the JVM heap, reconstituted by replaying events. Validation happens at RAM speed — no DB round-trip needed to check balance.</p>
+
+<pre><span class="cm">// V1 — DB lock + mutate column</span>
+<span class="cl">Account</span> source <span class="op">=</span> accountRepo.<span class="fn">findByIdForUpdate</span>(id);  <span class="cm">// SELECT FOR UPDATE 🔒</span>
+source.<span class="fn">debit</span>(amount);                                  <span class="cm">// UPDATE balance column ✏️</span>
+
+<span class="cm">// V2 — RAM validation + append event</span>
+<span class="cl">AccountAggregate</span> source <span class="op">=</span> eventStore.<span class="fn">load</span>(id);       <span class="cm">// Snapshot + Replay on RAM ⚡</span>
+source.<span class="fn">reserveFunds</span>(amount, currency, transferId);    <span class="cm">// Validates availableBalance 🧠</span>
+eventStore.<span class="fn">append</span>(source);                             <span class="cm">// INSERT event — no lock needed ✅</span></pre>
+    </section>
+
+    <!-- Event Store -->
+    <section class="section" id="eventstore">
+      <div class="section-title">Event Store <span class="badge">CORE ENGINE</span></div>
+      <p><code>EventStore</code> is the central Write Side engine. <code>load()</code> reconstitutes an aggregate; <code>append()</code> persists new events and records them in the Outbox — all in a single DB transaction.</p>
+<pre><span class="cm">// EventStore.append() — atomically writes Event + Outbox</span>
+<span class="kw">for</span> (<span class="cl">DomainEvent</span> event : aggregate.<span class="fn">uncommittedEvents</span>()) {
+    eventRepository.<span class="fn">save</span>(<span class="cl">DomainEventRecord</span>.<span class="fn">from</span>(event, mapper));
+
+    outboxRecorder.<span class="fn">record</span>(                        <span class="cm">// same DB transaction 🔗</span>
+        event.<span class="fn">aggregateType</span>(),
+        event.<span class="fn">aggregateId</span>(),
+        event.<span class="fn">eventType</span>(),
+        <span class="st">"1"</span>,
+        record.<span class="fn">getPayload</span>()
+    );
+}
+<span class="kw">if</span> (aggregate.<span class="fn">shouldSnapshot</span>()) <span class="fn">takeSnapshot</span>(aggregate);  <span class="cm">// every 50 events</span>
+aggregate.<span class="fn">markCommitted</span>();</pre>
+    </section>
+
+    <!-- Optimistic Lock -->
+    <section class="section" id="optimistic">
+      <div class="section-title">Optimistic Locking <span class="badge">NO MORE SELECT FOR UPDATE</span></div>
+
+      <table class="compare">
+        <thead><tr><th>Aspect</th><th>V1 — Pessimistic Lock</th><th>V2 — Optimistic Lock</th></tr></thead>
+        <tbody>
+          <tr><td>Mechanism</td><td class="tag-bad">SELECT … FOR UPDATE</td><td class="tag-good">UNIQUE(aggregate_id, version)</td></tr>
+          <tr><td>Concurrency</td><td class="tag-bad">Threads block and queue</td><td class="tag-good">Threads run in parallel, DB rejects duplicate</td></tr>
+          <tr><td>Deadlock risk</td><td class="tag-bad">Required ID-sort workaround</td><td class="tag-good">None — constraint is atomic</td></tr>
+          <tr><td>On conflict</td><td class="tag-bad">First thread blocks others</td><td class="tag-good">Second thread retries (max 3x)</td></tr>
+          <tr><td>Write cost</td><td class="tag-bad">Lock + UPDATE row</td><td class="tag-good">Single INSERT (append-only)</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Schema -->
+    <section class="section" id="schema">
+      <div class="section-title">Database Schema <span class="badge">V5 + V6 MIGRATIONS</span></div>
+      <div class="schema-grid">
+        <div class="schema-table">
+          <div class="schema-table-header">domain_events <span class="schema-side">Write · Flyway V5</span></div>
+          <div class="schema-row"><span class="schema-col schema-key">event_id</span><span class="schema-type">VARCHAR2(50) PK</span></div>
+          <div class="schema-row"><span class="schema-col">aggregate_id</span><span class="schema-type">VARCHAR2(50)</span></div>
+          <div class="schema-row"><span class="schema-col">aggregate_type</span><span class="schema-type">VARCHAR2(50)</span></div>
+          <div class="schema-row"><span class="schema-col schema-lock">version</span><span class="schema-type">NUMBER(19) ← Optimistic Lock</span></div>
+          <div class="schema-row"><span class="schema-col">event_type</span><span class="schema-type">VARCHAR2(100)</span></div>
+          <div class="schema-row"><span class="schema-col">payload</span><span class="schema-type">CLOB (JSON)</span></div>
+          <div class="schema-row"><span class="schema-col">occurred_at</span><span class="schema-type">TIMESTAMP TZ</span></div>
+        </div>
+        <div class="schema-table">
+          <div class="schema-table-header">account_view <span class="schema-side">Read · Flyway V6</span></div>
+          <div class="schema-row"><span class="schema-col schema-key">account_id</span><span class="schema-type">VARCHAR2(50) PK</span></div>
+          <div class="schema-row"><span class="schema-col">currency</span><span class="schema-type">VARCHAR2(3)</span></div>
+          <div class="schema-row"><span class="schema-col schema-new">actual_balance</span><span class="schema-type">NUMBER(19,4)</span></div>
+          <div class="schema-row"><span class="schema-col schema-new">available_balance</span><span class="schema-type">NUMBER(19,4) ★</span></div>
+          <div class="schema-row"><span class="schema-col">status</span><span class="schema-type">VARCHAR2(20)</span></div>
+          <div class="schema-row"><span class="schema-col schema-lock">last_event_version</span><span class="schema-type">NUMBER(19) ← Idempotency</span></div>
+        </div>
+        <div class="schema-table">
+          <div class="schema-table-header">aggregate_snapshots <span class="schema-side">Write · Flyway V5</span></div>
+          <div class="schema-row"><span class="schema-col schema-key">aggregate_id</span><span class="schema-type">VARCHAR2(50) PK</span></div>
+          <div class="schema-row"><span class="schema-col">aggregate_type</span><span class="schema-type">VARCHAR2(50)</span></div>
+          <div class="schema-row"><span class="schema-col">version</span><span class="schema-type">NUMBER(19)</span></div>
+          <div class="schema-row"><span class="schema-col">payload</span><span class="schema-type">CLOB (JSON state)</span></div>
+          <div class="schema-row"><span class="schema-col" style="color:var(--text-mute)">Taken every 50 events</span><span class="schema-type"></span></div>
+        </div>
+        <div class="schema-table">
+          <div class="schema-table-header">transaction_history_view <span class="schema-side">Read · Flyway V6</span></div>
+          <div class="schema-row"><span class="schema-col schema-key">id</span><span class="schema-type">VARCHAR2(50) PK</span></div>
+          <div class="schema-row"><span class="schema-col">account_id</span><span class="schema-type">VARCHAR2(50)</span></div>
+          <div class="schema-row"><span class="schema-col schema-new">direction</span><span class="schema-type">DEBIT | CREDIT ★</span></div>
+          <div class="schema-row"><span class="schema-col">amount</span><span class="schema-type">NUMBER(19,4)</span></div>
+          <div class="schema-row"><span class="schema-col schema-new">balance_after</span><span class="schema-type">NUMBER(19,4) ★</span></div>
+          <div class="schema-row"><span class="schema-col">occurred_at</span><span class="schema-type">TIMESTAMP TZ</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Projector -->
+    <section class="section" id="projector">
+      <div class="section-title">AccountProjector <span class="badge">READ SIDE SYNC</span></div>
+      <p>The Projector listens to Domain Events and keeps <code>account_view</code> and <code>transaction_history_view</code> in sync. It runs <strong>in the same DB transaction</strong> as <code>EventStore.append()</code>, so Write and Read are always consistent — no eventual consistency delay in this phase.</p>
+<pre><span class="kw">@EventListener</span>
+<span class="kw">@Transactional</span>
+<span class="kw">public void</span> <span class="fn">on</span>(<span class="cl">FundsReservedEvent</span> event) {
+    <span class="cl">AccountView</span> view <span class="op">=</span> accountViews.<span class="fn">findById</span>(event.<span class="fn">aggregateId</span>())...;
+
+    view.<span class="fn">reserveFunds</span>(event.<span class="fn">amount</span>(), event.<span class="fn">version</span>());  <span class="cm">// idempotency guard inside ✅</span>
+    accountViews.<span class="fn">save</span>(view);
+
+    historyViews.<span class="fn">save</span>(<span class="kw">new</span> <span class="cl">TransactionHistoryView</span>(..., <span class="st">"DEBIT"</span>, view.<span class="fn">getAvailableBalance</span>()));
+}</pre>
+      <p>The <code>last_event_version</code> guard inside each mutator ensures that if Kafka delivers the same event twice in future, the projector silently skips it — no double deduction.</p>
+    </section>
+
+    <!-- Actual vs Available -->
+    <section class="section" id="balance">
+      <div class="section-title">Actual vs Available Balance <span class="badge">ANTI DOUBLE-SPEND</span></div>
+      <p>The key mechanism that prevents double-spending without row-level locking.</p>
+
+      <div class="arch-box">
+        <div class="arch-header"><div class="dot dot-green"></div>&nbsp; Transfer 500K: A → B</div>
+        <div class="arch-body">
+          <div class="flow">
+            <div class="flow-step">
+              <div class="flow-dot"></div>
+              <div class="flow-content">
+                <div class="flow-label">TransferCommand received</div>
+                <div class="flow-desc">Load AccountAggregate A from Event Store. Check <code>availableBalance &gt;= 500K</code> on RAM.</div>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot"></div>
+              <div class="flow-content">
+                <div class="flow-label">FundsReservedEvent → A</div>
+                <div class="flow-desc">Projector: <code>available_balance −= 500K</code>. Actual stays. App shows deduction immediately. <strong>A cannot spend this 500K elsewhere.</strong></div>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot"></div>
+              <div class="flow-content">
+                <div class="flow-label">FundsDepositedEvent → B</div>
+                <div class="flow-desc">Projector: <code>actual_balance += 500K, available_balance += 500K</code>. B's money is live.</div>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot success"></div>
+              <div class="flow-content">
+                <div class="flow-label success">TransferCompletedEvent → A</div>
+                <div class="flow-desc">Projector: <code>actual_balance −= 500K</code>. Ledger closes. Transaction officially settled.</div>
+              </div>
+            </div>
+            <div class="flow-step">
+              <div class="flow-dot fail"></div>
+              <div class="flow-content">
+                <div class="flow-label fail">TransferFailedEvent → A (if B fails)</div>
+                <div class="flow-desc">Projector: <code>available_balance += 500K</code>. Funds released. A can use them again.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Saga -->
+    <section class="section" id="saga">
+      <div class="section-title">Transfer Flow (Saga) <span class="badge">COMMAND HANDLER V2</span></div>
+      <p>The new <code>TransferCommandHandler</code> has no locks, no ID sorting, no manual idempotency check. Concurrency is handled by the DB constraint. Failures auto-retry up to 3 times.</p>
+<pre><span class="kw">for</span> (<span class="kw">int</span> attempt <span class="op">=</span> <span class="nb">1</span>; attempt <span class="op">&lt;=</span> MAX_RETRIES; attempt++) {
+    <span class="kw">try</span> {
+        <span class="cl">AccountAggregate</span> source <span class="op">=</span> eventStore.<span class="fn">load</span>(request.<span class="fn">getSourceAccountId</span>());
+        source.<span class="fn">reserveFunds</span>(amount, currency, transferId);     <span class="cm">// validate on RAM</span>
+
+        <span class="cl">AccountAggregate</span> dest <span class="op">=</span> eventStore.<span class="fn">load</span>(request.<span class="fn">getDestinationAccountId</span>());
+        dest.<span class="fn">depositFunds</span>(amount, currency, transferId);
+
+        source.<span class="fn">completeTransfer</span>(amount, currency, transferId, destId);
+
+        eventStore.<span class="fn">append</span>(source);   <span class="cm">// INSERT + Outbox — no locks</span>
+        eventStore.<span class="fn">append</span>(dest);
+
+        <span class="kw">return</span> response;
+    } <span class="kw">catch</span> (<span class="cl">DataIntegrityViolationException</span> ex) {
+        <span class="cm">// Optimistic lock conflict → retry</span>
+        <span class="kw">if</span> (attempt <span class="op">==</span> MAX_RETRIES) <span class="kw">throw</span> ex;
+    }
+}</pre>
+    </section>
+
+    <!-- Files -->
+    <section class="section" id="files">
+      <div class="section-title">Files Changed <span class="badge">REFACTOR SCOPE</span></div>
+      <div class="file-tree">
+<span class="ft-dir">corebank/src/main/java/com/hieu/corebank/</span>
+├── <span class="ft-dir">eventsourcing/</span>                              <span class="ft-new">← NEW package</span>
+│   ├── <span class="ft-dir">event/</span>
+│   │   ├── <span class="ft-new">DomainEvent.java</span>                      <span class="ft-new">● new</span>
+│   │   ├── <span class="ft-new">AccountCreatedEvent.java</span>              <span class="ft-new">● new</span>
+│   │   ├── <span class="ft-new">FundsReservedEvent.java</span>               <span class="ft-new">● new</span>
+│   │   ├── <span class="ft-new">TransferCompletedEvent.java</span>           <span class="ft-new">● new</span>
+│   │   ├── <span class="ft-new">TransferFailedEvent.java</span>              <span class="ft-new">● new</span>
+│   │   └── <span class="ft-new">FundsDepositedEvent.java</span>              <span class="ft-new">● new</span>
+│   ├── <span class="ft-dir">aggregate/</span>
+│   │   └── <span class="ft-new">AccountAggregate.java</span>                 <span class="ft-new">● new</span>
+│   ├── <span class="ft-dir">store/</span>
+│   │   ├── <span class="ft-new">DomainEventRecord.java</span>                <span class="ft-new">● new</span>
+│   │   ├── <span class="ft-new">DomainEventRepository.java</span>            <span class="ft-new">● new</span>
+│   │   └── <span class="ft-new">EventStore.java</span>                       <span class="ft-new">● new</span>
+│   └── <span class="ft-dir">snapshot/</span>
+│       ├── <span class="ft-new">AggregateSnapshot.java</span>                <span class="ft-new">● new</span>
+│       └── <span class="ft-new">SnapshotRepository.java</span>               <span class="ft-new">● new</span>
+├── <span class="ft-dir">projection/</span>                                  <span class="ft-new">← NEW package</span>
+│   ├── <span class="ft-new">AccountView.java</span>                          <span class="ft-new">● new</span>
+│   ├── <span class="ft-new">AccountViewRepository.java</span>                <span class="ft-new">● new</span>
+│   ├── <span class="ft-new">AccountProjector.java</span>                     <span class="ft-new">● new</span>
+│   ├── <span class="ft-new">TransactionHistoryView.java</span>               <span class="ft-new">● new</span>
+│   └── <span class="ft-new">TransactionHistoryViewRepository.java</span>     <span class="ft-new">● new</span>
+├── <span class="ft-dir">handler/command/</span>
+│   ├── account/<span class="ft-mod">CreateAccountCommandHandler.java</span>   <span class="ft-mod">◐ rewritten</span>
+│   └── transfer/<span class="ft-mod">TransferCommandHandler.java</span>       <span class="ft-mod">◐ rewritten</span>
+├── <span class="ft-dir">handler/query/</span>
+│   ├── account/<span class="ft-mod">GetAccountBalanceQueryHandler.java</span>  <span class="ft-mod">◐ reads account_view</span>
+│   └── transfer/<span class="ft-mod">GetTransferHistoryQueryHandler.java</span><span class="ft-mod">◐ reads tx_history_view</span>
+├── <span class="ft-dir">dto/</span>
+│   ├── <span class="ft-mod">AccountBalanceResponseDTO.java</span>            <span class="ft-mod">◐ +availableBalance</span>
+│   └── <span class="ft-new">TransactionHistoryItemDTO.java</span>            <span class="ft-new">● new (direction, balanceAfter)</span>
+└── <span class="ft-dir">api/</span>
+    ├── <span class="ft-mod">AccountController.java</span>                    <span class="ft-mod">◐ history returns new DTO</span>
+    └── impl/<span class="ft-mod">AccountControllerImpl.java</span>            <span class="ft-mod">◐ updated</span>
+
+<span class="ft-dir">corebank/src/main/resources/db/migration/</span>
+├── <span class="ft-new">V5__event_store.sql</span>                           <span class="ft-new">● new</span>
+└── <span class="ft-new">V6__read_projections.sql</span>                      <span class="ft-new">● new</span>
+      </div>
+    </section>
+
+    <!-- Trade-offs -->
+    <section class="section" id="tradeoffs">
+      <div class="section-title">Trade-offs Accepted <span class="badge">HONEST COSTS</span></div>
+      <div class="card-grid">
+        <div class="card trade">
+          <div class="card-icon">⚡</div>
+          <div class="card-title">Eventual Consistency (Phase 1: None)</div>
+          <p>In this phase, the Projector runs synchronously in the same transaction. Zero delay. When we move to Kafka, a brief sub-second lag will appear — manageable with optimistic UI updates.</p>
+        </div>
+        <div class="card trade">
+          <div class="card-icon">📸</div>
+          <div class="card-title">Snapshotting Complexity</div>
+          <p>Without snapshots, replaying 1M events would crash RAM. The <code>SnapshotPolicy</code> triggers every 50 events. Added complexity, but correctness is unaffected if snapshot fails.</p>
+        </div>
+        <div class="card trade">
+          <div class="card-icon">🧩</div>
+          <div class="card-title">Event Schema Evolution</div>
+          <p>Events are immutable once written. The <code>schema_version</code> column + upcasters handle format changes. Old events must always deserialize correctly — test coverage is critical.</p>
+        </div>
+      </div>
+
+      <div style="margin-top:24px">
+        <div class="section-title" style="font-size:16px">What Does NOT Change</div>
+        <ul class="checklist">
+          <li><span class="icon check-done">✓</span> REST API surface — same endpoints, same contract</li>
+          <li><span class="icon check-done">✓</span> Security — Keycloak / OAuth2 Resource Server</li>
+          <li><span class="icon check-done">✓</span> Outbox infrastructure — OutboxRecorder, OutboxDispatcher</li>
+          <li><span class="icon check-done">✓</span> Idempotency infrastructure — IdempotencyRecord, IdempotencyService</li>
+          <li><span class="icon check-done">✓</span> Observability — Prometheus, OTLP tracing, Loki</li>
+          <li><span class="icon check-done">✓</span> Flyway baseline — V1–V4 migrations untouched</li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  function scrollTo(id) {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    event.target.classList.add('active');
+  }
+
+  // Highlight active nav on scroll
+  const sections = ['hero','painpoints','architecture','events','aggregate','eventstore',
+                    'optimistic','schema','projector','balance','saga','files','tradeoffs'];
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        const link = document.querySelector(`.nav-link[onclick="scrollTo('${e.target.id}')"]`);
+        if (link) link.classList.add('active');
+      }
+    });
+  }, { threshold: 0.3 });
+
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  });
+</script>

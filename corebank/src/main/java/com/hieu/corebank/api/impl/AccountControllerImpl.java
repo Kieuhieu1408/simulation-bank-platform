@@ -2,12 +2,7 @@ package com.hieu.corebank.api.impl;
 
 import com.hieu.corebank.api.AccountController;
 import com.hieu.corebank.api.BaseController;
-import com.hieu.corebank.dto.AccountCreateRequestDTO;
-import com.hieu.corebank.dto.AccountBalanceResponseDTO;
-import com.hieu.corebank.dto.AccountResponseDTO;
-import com.hieu.corebank.dto.IssueCardRequestDTO;
-import com.hieu.corebank.dto.IssueCardResponseDTO;
-import com.hieu.corebank.dto.TransferResponseDTO;
+import com.hieu.corebank.dto.*;
 import com.hieu.corebank.handler.query.account.GetAccountBalanceQueryHandler.GetAccountBalanceQuery;
 import com.hieu.corebank.handler.query.account.GetAccountByIdQueryHandler.GetAccountByIdQuery;
 import com.hieu.corebank.handler.query.transfer.GetTransferHistoryQueryHandler.GetTransferHistoryQuery;
@@ -43,7 +38,13 @@ public class AccountControllerImpl extends BaseController implements AccountCont
     }
 
     @Override
-    public ResponseEntity<Page<TransferResponseDTO>> history(String id, Instant from, Instant to, int page, int size) {
-        return executeQuery(new GetTransferHistoryQuery(id, from, to, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))), (Class<Page<TransferResponseDTO>>) (Class<?>) Page.class);
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<Page<TransactionHistoryItemDTO>> history(
+            String id, Instant from, Instant to, int page, int size) {
+        return executeQuery(
+                new GetTransferHistoryQuery(id, from, to,
+                        PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "occurredAt"))),
+                (Class<Page<TransactionHistoryItemDTO>>) (Class<?>) Page.class
+        );
     }
 }

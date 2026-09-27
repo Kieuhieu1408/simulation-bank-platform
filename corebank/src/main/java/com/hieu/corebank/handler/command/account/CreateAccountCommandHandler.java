@@ -1,41 +1,76 @@
 package com.hieu.corebank.handler.command.account;
 
 import com.hieu.common.cqrs.CommandHandler;
-import com.hieu.corebank.domain.Account;
 import com.hieu.corebank.domain.Customer;
 import com.hieu.corebank.dto.AccountCreateRequestDTO;
 import com.hieu.corebank.dto.AccountResponseDTO;
+import com.hieu.corebank.eventsourcing.aggregate.AccountAggregate;
+import com.hieu.corebank.eventsourcing.store.EventStore;
 import com.hieu.corebank.exception.NotFoundException;
-import com.hieu.corebank.repository.AccountRepository;
 import com.hieu.corebank.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
+/**
+ * CreateAccountCommandHandler V2 — Event Sourcing edition.
+ *
+ * <p>Thay vì accounts.save(new Account(...)), giờ ta:
+ * 1. Tạo AccountAggregate (sinh AccountCreatedEvent)
+ * 2. EventStore.append() ghi event + outbox vào DB
+ *
+ * <p>account_view sẽ được cập nhật bởi AccountProjector khi nhận AccountCreatedEvent.
+ */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class CreateAccountCommandHandler implements CommandHandler<AccountCreateRequestDTO, AccountResponseDTO> {
 
-    private final AccountRepository accounts;
     private final CustomerRepository customers;
-    private final JdbcClient jdbc;
+    private final EventStore          eventStore;
+    private final JdbcClient          jdbc;
 
     @Override
     @Transactional
     public AccountResponseDTO handle(AccountCreateRequestDTO request) {
-        BigDecimal balance = request.getInitialBalance() == null ? BigDecimal.ZERO : request.getInitialBalance();
         Customer customer = customers.findById(request.getCifNumber())
                 .orElseThrow(() -> new NotFoundException("Customer not found: " + request.getCifNumber()));
-        Account account = accounts.save(new Account(
-                nextAccountNumber(),
-                customer,
+
+        BigDecimal initialBalance = request.getInitialBalance() == null
+                ? BigDecimal.ZERO
+                : request.getInitialBalance();
+
+        String accountId     = UUID.randomUUID().toString();
+        String accountNumber = nextAccountNumber();
+
+        // Tạo aggregate — sinh AccountCreatedEvent
+        AccountAggregate account = AccountAggregate.create(
+                accountId, accountNumber,
+                customer.getCifNumber(),
                 request.getCurrency().toUpperCase(),
-                balance
-        ));
-        return AccountResponseDTO.from(account);
+                initialBalance
+        );
+
+        // Ghi event + outbox vào DB trong cùng transaction
+        eventStore.append(account);
+
+        log.info("Account created: accountId={} accountNumber={} cif={}",
+                accountId, accountNumber, customer.getCifNumber());
+
+        return AccountResponseDTO.builder()
+                .accountId(accountId)
+                .accountNumber(accountNumber)
+                .cifNumber(customer.getCifNumber())
+                .currency(request.getCurrency().toUpperCase())
+                .balance(initialBalance)
+                .status(com.hieu.corebank.constant.AccountStatus.ACTIVE)
+                .createdAt(java.time.Instant.now())
+                .build();
     }
 
     private String nextAccountNumber() {

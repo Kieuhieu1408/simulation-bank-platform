@@ -2,12 +2,11 @@ package com.hieu.corebank.handler.query.transfer;
 
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
-import com.hieu.corebank.domain.BankTransaction;
-import com.hieu.corebank.dto.TransferResponseDTO;
+import com.hieu.corebank.dto.TransactionHistoryItemDTO;
 import com.hieu.corebank.exception.BusinessException;
 import com.hieu.corebank.exception.NotFoundException;
-import com.hieu.corebank.repository.AccountRepository;
-import com.hieu.corebank.repository.TransactionRepository;
+import com.hieu.corebank.projection.AccountViewRepository;
+import com.hieu.corebank.projection.TransactionHistoryViewRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,36 +15,53 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 
+/**
+ * V2: Đọc từ transaction_history_view (Read Side).
+ * Trả về TransactionHistoryItemDTO với đầy đủ direction và balance_after —
+ * thông tin mà V1 không có.
+ */
 @Component
 @RequiredArgsConstructor
-public class GetTransferHistoryQueryHandler implements QueryHandler<GetTransferHistoryQueryHandler.GetTransferHistoryQuery, Page<TransferResponseDTO>> {
+public class GetTransferHistoryQueryHandler
+        implements QueryHandler<GetTransferHistoryQueryHandler.GetTransferHistoryQuery,
+                                Page<TransactionHistoryItemDTO>> {
 
     public record GetTransferHistoryQuery(
             String accountId,
             Instant from,
             Instant to,
             Pageable pageable
-    ) implements Query<Page<TransferResponseDTO>> {
-    }
+    ) implements Query<Page<TransactionHistoryItemDTO>> {}
 
-    private final AccountRepository accounts;
-    private final TransactionRepository transactions;
+    private final AccountViewRepository             accountViews;
+    private final TransactionHistoryViewRepository  historyViews;
 
     @Override
     @Transactional(readOnly = true)
-    public Page<TransferResponseDTO> handle(GetTransferHistoryQuery query) {
-        if (!accounts.existsById(query.accountId())) {
+    public Page<TransactionHistoryItemDTO> handle(GetTransferHistoryQuery query) {
+        if (!accountViews.existsById(query.accountId())) {
             throw new NotFoundException("Account not found: " + query.accountId());
         }
 
         Instant start = query.from() == null ? Instant.EPOCH : query.from();
-        Instant end = query.to() == null ? Instant.now() : query.to();
+        Instant end   = query.to()   == null ? Instant.now() : query.to();
 
         if (start.isAfter(end)) {
             throw new BusinessException("from must be before to");
         }
 
-        Page<BankTransaction> page = transactions.findHistory(query.accountId(), start, end, query.pageable());
-        return page.map(TransferResponseDTO::from);
+        return historyViews
+                .findByAccountId(query.accountId(), start, end, query.pageable())
+                .map(row -> new TransactionHistoryItemDTO(
+                        row.getId(),
+                        row.getAccountId(),
+                        row.getDirection(),
+                        row.getAmount(),
+                        row.getCurrency(),
+                        row.getBalanceAfter(),
+                        row.getEventType(),
+                        row.getDescription(),
+                        row.getOccurredAt()
+                ));
     }
 }
