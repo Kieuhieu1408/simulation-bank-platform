@@ -64,18 +64,98 @@ Thay vì dùng Axios Interceptor như React, Angular sử dụng `HttpIntercepto
 
 ---
 
-## 5. KIẾN TRÚC BACKEND (SPRING BOOT)
+## 5. PROJECT STRUCTURE
 
-### 5.1. Cấu trúc Layer (Clean Architecture / N-Tier)
+CMS được tổ chức theo mô hình monorepo gồm Frontend Angular và Backend Spring Boot. Hai phần có vòng đời build và kiểm thử độc lập, giao tiếp với nhau qua REST API; các tài liệu thiết kế và cấu hình dùng chung được đặt ở cấp module CMS.
+
+### 5.1. Cấu trúc thư mục đề xuất
+
+```text
+cms/
+├── docs/
+│   ├── BRD.md
+│   ├── HLD.md
+│   └── SRD.md
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── core/                 # Auth, interceptor, guards, error handler
+│   │   │   ├── shared/               # Component, pipe, directive, model dùng chung
+│   │   │   ├── layout/               # Shell, header, sidebar, breadcrumb
+│   │   │   ├── features/
+│   │   │   │   ├── customer-lookup/  # Tra cứu và hiển thị dữ liệu đã masking
+│   │   │   │   ├── proposals/        # Maker-Checker workflow
+│   │   │   │   ├── documents/        # Upload và quản lý tài liệu
+│   │   │   │   └── administration/   # Role, permission, user configuration
+│   │   │   ├── state/                # Global state hoặc feature stores
+│   │   │   └── app.routes.ts
+│   │   ├── assets/
+│   │   ├── environments/
+│   │   └── styles/
+│   ├── angular.json
+│   ├── package.json
+│   └── tsconfig.json
+├── backend/
+│   ├── .mvn/wrapper/                 # Maven Wrapper để build ổn định theo project
+│   ├── src/
+│   │   ├── main/
+│   │   │   ├── java/com/.../cms/
+│   │   │   │   ├── CmsApplication.java
+│   │   │   │   ├── configuration/    # Security, Jackson, OpenAPI, database config
+│   │   │   │   ├── controller/       # REST endpoints và request validation
+│   │   │   │   ├── service/          # Use case và business orchestration
+│   │   │   │   ├── repository/       # Spring Data JPA repositories
+│   │   │   │   ├── entity/           # Persistence model
+│   │   │   │   ├── dto/              # Request/response contracts
+│   │   │   │   ├── mapper/           # MapStruct entity/DTO mappings
+│   │   │   │   ├── exception/        # Business exception và global handler
+│   │   │   │   ├── security/         # JWT, @CmsAuthorization và permission check
+│   │   │   │   ├── client/           # Core, Keycloak và service clients
+│   │   │   │   └── storage/          # MinIO/S3 adapter và document metadata
+│   │   │   └── resources/
+│   │   │       ├── application.yaml
+│   │   │       ├── application-local.yaml
+│   │   │       ├── application-prod.yaml
+│   │   │       └── db/migration/     # Flyway/Liquibase migrations
+│   │   └── test/
+│   │       ├── java/com/.../cms/     # Unit, MVC và integration tests
+│   │       └── resources/
+│   │           └── application-test.yaml
+│   ├── pom.xml                       # Spring Boot, JPA, Security, MapStruct, test
+│   ├── mvnw
+│   ├── mvnw.cmd
+│   ├── Dockerfile                    # Multi-stage Maven build và JRE runtime
+│   └── README.md
+├── compose.yaml
+└── README.md
+```
+
+### 5.2. Nguyên tắc phân chia package
+
+* Backend là một Spring Boot service độc lập, có package gốc duy nhất và class `CmsApplication` ở package gốc để Spring component scanning hoạt động nhất quán.
+* Tổ chức package theo layer giống pattern của `identity-service`: `controller` tiếp nhận API, `service` điều phối use case, `repository` truy cập dữ liệu, `entity` biểu diễn persistence model, `dto` là hợp đồng API và `mapper` chuyển đổi giữa các model.
+* `controller` chỉ validate request và gọi `service`; không truy cập trực tiếp `repository`, `client` hoặc `storage`.
+* Các nghiệp vụ `customer`, `proposal`, `document` và `authorization` được phân tách bằng service, DTO, repository và mapper tương ứng; không gom logic nghiệp vụ vào `configuration` hoặc `common`.
+* `configuration` chỉ chứa cấu hình kỹ thuật. Chi tiết tích hợp Keycloak, Core/Customer Service, Kafka/RabbitMQ và MinIO/S3 phải được cô lập trong `client` hoặc `storage`.
+* `entity` không được dùng làm response trực tiếp. Data masking phải hoàn tất khi mapping sang DTO trước khi trả dữ liệu ra ngoài.
+* Migration phải version hóa theo thứ tự và là nguồn duy nhất tạo/cập nhật schema cho các bảng `cms_role`, `cms_permission`, `cms_role_permission`, `proposal` và `proposal_change_log`.
+
+### 5.3. Trạng thái hiện tại của repository
+
+Tại thời điểm viết tài liệu, module `cms` mới có `docs/` và `src/main/resources/application.yaml`; các thư mục `frontend/`, `backend/`, source Java, test và build descriptor trong cây trên là cấu trúc mục tiêu cần được tạo khi bắt đầu triển khai. Không nên xem các thư mục mục tiêu là thành phần đã có sẵn trong repository.
+
+## 6. KIẾN TRÚC BACKEND (SPRING BOOT)
+
+### 6.1. Cấu trúc Layer (Clean Architecture / N-Tier)
 1. **Controllers (API Layer):** Nơi gắn `@CmsAuthorization`, hứng request, validate DTO (Data Transfer Object).
 2. **Services (Business Layer):** Chứa logic nghiệp vụ (ví dụ: tạo Proposal, che giấu dữ liệu PII - Masking).
 3. **Repositories (Data Access Layer):** JPA / Hibernate tương tác với Database.
 4. **Clients / Integration Layer:** Giao tiếp với Keycloak API, gửi message vào Kafka, hoặc gọi REST API sang `customer-service`.
 
-### 5.2. Che giấu dữ liệu (Data Masking)
+### 6.2. Che giấu dữ liệu (Data Masking)
 Logic Masking (che CIF, SĐT, CCCD) **bắt buộc phải thực hiện ở Backend Layer** (thông qua DTO Mapper hoặc Jackson Serializer) trước khi gửi qua mạng. Frontend chỉ việc hiển thị chuỗi đã bị masked (VD: `*******123`).
 
-### 5.3. Observability (MDC Logging)
+### 6.3. Observability (MDC Logging)
 Mọi request vào Backend sẽ được Filter/Interceptor tóm lấy `X-Request-ID` từ Header và gán vào `MDC` (Mapped Diagnostic Context). Cấu hình Logback sẽ tự động in `trace_id` này ra mọi dòng log `[INFO]`, `[ERROR]`, giúp tra cứu xuyên suốt hệ thống (Distributed Tracing).
 
 ---
