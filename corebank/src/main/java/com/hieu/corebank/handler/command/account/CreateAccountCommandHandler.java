@@ -2,8 +2,8 @@ package com.hieu.corebank.handler.command.account;
 
 import com.hieu.common.cqrs.CommandHandler;
 import com.hieu.corebank.domain.Customer;
-import com.hieu.corebank.dto.AccountCreateRequestDTO;
-import com.hieu.corebank.dto.AccountResponseDTO;
+import com.hieu.corebank.dto.request.AccountCreateRequestDTO;
+import com.hieu.corebank.dto.response.AccountResponseDTO;
 import com.hieu.corebank.eventsourcing.aggregate.AccountAggregate;
 import com.hieu.corebank.eventsourcing.store.EventStore;
 import com.hieu.corebank.exception.NotFoundException;

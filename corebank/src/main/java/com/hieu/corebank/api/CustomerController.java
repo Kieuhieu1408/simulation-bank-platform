@@ -1,9 +1,9 @@
 package com.hieu.corebank.api;
 
-import com.hieu.corebank.dto.CustomerCreateRequestDTO;
-import com.hieu.corebank.dto.AccountResponseDTO;
-import com.hieu.corebank.dto.IssueCardResponseDTO;
-import com.hieu.corebank.dto.CustomerResponseDTO;
+import com.hieu.corebank.dto.request.CustomerCreateRequestDTO;
+import com.hieu.corebank.dto.response.AccountResponseDTO;
+import com.hieu.corebank.dto.response.IssueCardResponseDTO;
+import com.hieu.corebank.dto.response.CustomerResponseDTO;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

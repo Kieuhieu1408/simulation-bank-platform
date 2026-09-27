@@ -1,4 +1,4 @@
-package com.hieu.corebank.dto;
+package com.hieu.corebank.dto.request;
 
 import java.math.BigDecimal;
 import java.time.Instant;

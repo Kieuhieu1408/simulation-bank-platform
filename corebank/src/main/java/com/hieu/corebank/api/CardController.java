@@ -1,6 +1,6 @@
 package com.hieu.corebank.api;
 
-import com.hieu.corebank.dto.IssueCardResponseDTO;
+import com.hieu.corebank.dto.response.IssueCardResponseDTO;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;

@@ -1,4 +1,4 @@
-package com.hieu.corebank.dto;
+package com.hieu.corebank.dto.request;
 
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import com.hieu.common.cqrs.Command;
-import com.hieu.corebank.dto.TransferResponseDTO;
+import com.hieu.corebank.dto.response.TransferResponseDTO;
 
 @Data
 @NoArgsConstructor

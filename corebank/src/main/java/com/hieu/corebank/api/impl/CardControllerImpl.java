@@ -2,7 +2,7 @@ package com.hieu.corebank.api.impl;
 
 import com.hieu.corebank.api.BaseController;
 import com.hieu.corebank.api.CardController;
-import com.hieu.corebank.dto.IssueCardResponseDTO;
+import com.hieu.corebank.dto.response.IssueCardResponseDTO;
 import com.hieu.corebank.handler.query.card.GetCardByIdQueryHandler.GetCardByIdQuery;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;

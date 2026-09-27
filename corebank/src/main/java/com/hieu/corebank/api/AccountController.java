@@ -1,10 +1,10 @@
 package com.hieu.corebank.api;
 
-import com.hieu.corebank.dto.AccountCreateRequestDTO;
-import com.hieu.corebank.dto.AccountBalanceResponseDTO;
-import com.hieu.corebank.dto.AccountResponseDTO;
-import com.hieu.corebank.dto.IssueCardResponseDTO;
-import com.hieu.corebank.dto.TransactionHistoryItemDTO;
+import com.hieu.corebank.dto.request.AccountCreateRequestDTO;
+import com.hieu.corebank.dto.response.AccountBalanceResponseDTO;
+import com.hieu.corebank.dto.response.AccountResponseDTO;
+import com.hieu.corebank.dto.response.IssueCardResponseDTO;
+import com.hieu.corebank.dto.request.TransactionHistoryItemDTO;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;

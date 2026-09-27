@@ -2,7 +2,7 @@ package com.hieu.corebank.handler.query.transfer;
 
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
-import com.hieu.corebank.dto.TransactionHistoryItemDTO;
+import com.hieu.corebank.dto.request.TransactionHistoryItemDTO;
 import com.hieu.corebank.exception.BusinessException;
 import com.hieu.corebank.exception.NotFoundException;
 import com.hieu.corebank.projection.AccountViewRepository;
