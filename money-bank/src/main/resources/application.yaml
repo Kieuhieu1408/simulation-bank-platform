@@ -79,3 +79,39 @@ money-bank:
     jwk-set-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}/protocol/openid-connect/certs
     issuer: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}
     audience: moneybank-service
+
+  # ── Outbox Dispatcher (U-07) ────────────────────────────────────────────────
+  # dispatcher-enabled: false   ← mặc định TẮT; chỉ bật khi Kafka sẵn sàng.
+  # Bật mà thiếu spring.kafka.bootstrap-servers → ứng dụng fail khi khởi động.
+  # Đó là hành vi mong muốn: không publish silently.
+  outbox:
+    dispatcher-enabled: ${OUTBOX_DISPATCHER_ENABLED:false}
+    batch-size: 50
+    poll-interval: 1s
+    retry-backoff: 2s
+    max-retry-backoff: 5m
+    alert-after-attempts: 10
+
+  # ── Kafka Outbox Topics (U-07) ───────────────────────────────────────────────
+  kafka:
+    transfer-events-topic: ${KAFKA_TOPIC_TRANSFER_EVENTS:transfer-events}
+    request-timeout-ms: 5000
+    retries: 3
+
+# ── Spring Kafka Producer ────────────────────────────────────────────────────
+# bootstrap-servers để trống theo mặc định → Kafka client KHÔNG được khởi tạo.
+# Set qua env var KAFKA_BOOTSTRAP_SERVERS khi deploy với Kafka.
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:}
+    producer:
+      # Acks và idempotence được override trong OutboxKafkaConfig.
+      # Khai báo ở đây để Spring Boot auto-config cũng nhận (nếu có auto-config khác).
+      acks: all
+      enable-idempotence: true
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    # Consumer chưa được dùng ở money-bank (U-08 sẽ thêm sau)
+    # consumer:
+    #   group-id: money-bank-inbox
+    #   auto-offset-reset: earliest

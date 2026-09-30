@@ -1,7 +1,7 @@
 # Feature Roadmap — Simulation Bank Platform
 
 > **Phiên bản:** 1.0.0
-> **Cập nhật lần cuối:** 2026-09-30
+> **Cập nhật lần cuối:** 2026-09-30 (U-07)
 > **Mục đích:** Quản lý tiến độ theo **tính năng nghiệp vụ xuyên service** — đọc file này để biết đang làm tính năng gì, service nào đang active, unblock tiếp theo là gì.
 >
 > 📌 **Quy ước trạng thái:**
@@ -137,7 +137,7 @@ money-bank
 | CQRS Pipeline & Idempotency Refactoring | ✅ DONE | U-04 |
 | Corebank Adapter + Resilience4j (Circuit Breaker) | ✅ DONE | U-05 |
 | Transfer Command (Proposal entity, state machine, domain invariant) | ✅ DONE | U-06 (2026-09-30) |
-| Outbox + Kafka publisher | 🔲 BACKLOG | U-07 |
+| Outbox + Kafka publisher | ✅ DONE | U-07 (2026-09-30) |
 | Kafka Inbox consumer | 🔲 BACKLOG | U-08 |
 | Reconciliation Job (retry, MANUAL_REVIEW) | 🔲 BACKLOG | U-09 |
 | Proposal Facade (token exchange + profile lookup) | ⏸️ BLOCKED | U-10 — chờ Profile API contract |
@@ -221,11 +221,11 @@ money-bank
 | Service | Task | Ghi chú |
 |---|---|---|
 | `money-bank` | **U-06: Transfer Command & State Machine** | TransferProposal, state machine PENDING→CONFIRMED/FAILED, Outbox integration |
+| `money-bank` | **U-07: Outbox + Kafka publisher** | KafkaOutboxMessagePublisher, OutboxDispatchScheduler, spring-kafka, topic=transfer-events |
 
 ### 🟡 Đang làm
 | Service | Task | Người phụ trách |
 |---|---|---|
-| `money-bank` | **U-07: Outbox + Kafka publisher** | @dlc |
 | `profile-service` | **Requirements Analysis** — đang dang dở | @dlc |
 
 ### ⏸️ Chờ quyết định
