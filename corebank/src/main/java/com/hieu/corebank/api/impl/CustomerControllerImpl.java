@@ -2,6 +2,7 @@ package com.hieu.corebank.api.impl;
 
 import com.hieu.corebank.api.BaseController;
 import com.hieu.corebank.api.CustomerController;
+import com.hieu.corebank.constant.ActionType;
 import com.hieu.corebank.dto.request.CustomerCreateRequestDTO;
 import com.hieu.corebank.dto.response.AccountResponseDTO;
 import com.hieu.corebank.dto.response.IssueCardResponseDTO;
@@ -9,6 +10,7 @@ import com.hieu.corebank.dto.response.CustomerResponseDTO;
 import com.hieu.corebank.handler.query.account.GetAccountsByCifQueryHandler.GetAccountsByCifQuery;
 import com.hieu.corebank.handler.query.card.GetCardsByCifQueryHandler.GetCardsByCifQuery;
 import com.hieu.corebank.handler.query.customer.GetCustomerQueryHandler.GetCustomerQuery;
+import com.hieu.corebank.security.CoreBankAuthorization;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,23 +20,27 @@ import java.util.List;
 public class CustomerControllerImpl extends BaseController implements CustomerController {
 
     @Override
+    @CoreBankAuthorization(menuCode = "customer_management", action = ActionType.CREATE)
     public ResponseEntity<CustomerResponseDTO> create(CustomerCreateRequestDTO request) {
         return execute(request, CustomerResponseDTO.class);
     }
 
     @Override
+    @CoreBankAuthorization(menuCode = "customer_management", action = ActionType.READ)
     public ResponseEntity<CustomerResponseDTO> get(String cifNumber) {
         return executeQuery(new GetCustomerQuery(cifNumber), CustomerResponseDTO.class);
     }
 
     @Override
     @SuppressWarnings("unchecked")
+    @CoreBankAuthorization(menuCode = "account_management", action = ActionType.READ)
     public ResponseEntity<List<AccountResponseDTO>> accounts(String cifNumber) {
         return executeQuery(new GetAccountsByCifQuery(cifNumber), (Class<List<AccountResponseDTO>>) (Class<?>) List.class);
     }
 
     @Override
     @SuppressWarnings("unchecked")
+    @CoreBankAuthorization(menuCode = "card_management", action = ActionType.READ)
     public ResponseEntity<List<IssueCardResponseDTO>> cards(String cifNumber) {
         // Validate customer exists implicitly if needed, or rely on the query handler.
         return executeQuery(new GetCardsByCifQuery(cifNumber), (Class<List<IssueCardResponseDTO>>) (Class<?>) List.class);

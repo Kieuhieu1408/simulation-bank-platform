@@ -2,6 +2,7 @@ package com.hieu.corebank.api.impl;
 
 import com.hieu.corebank.api.AccountController;
 import com.hieu.corebank.api.BaseController;
+import com.hieu.corebank.constant.ActionType;
 import com.hieu.corebank.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.dto.request.IssueCardRequestDTO;
 import com.hieu.corebank.dto.request.TransactionHistoryItemDTO;
@@ -11,6 +12,7 @@ import com.hieu.corebank.dto.response.IssueCardResponseDTO;
 import com.hieu.corebank.handler.query.account.GetAccountBalanceQueryHandler.GetAccountBalanceQuery;
 import com.hieu.corebank.handler.query.account.GetAccountByIdQueryHandler.GetAccountByIdQuery;
 import com.hieu.corebank.handler.query.transfer.GetTransferHistoryQueryHandler.GetTransferHistoryQuery;
+import com.hieu.corebank.security.CoreBankAuthorization;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -23,27 +25,32 @@ import java.time.Instant;
 public class AccountControllerImpl extends BaseController implements AccountController {
 
     @Override
+    @CoreBankAuthorization(menuCode = "account_management", action = ActionType.CREATE)
     public ResponseEntity<AccountResponseDTO> create(AccountCreateRequestDTO request) {
         return execute(request, AccountResponseDTO.class);
     }
 
     @Override
+    @CoreBankAuthorization(menuCode = "account_management", action = ActionType.READ)
     public ResponseEntity<AccountResponseDTO> get(String id) {
         return executeQuery(new GetAccountByIdQuery(id), AccountResponseDTO.class);
     }
 
     @Override
+    @CoreBankAuthorization(menuCode = "account_management", action = ActionType.READ)
     public ResponseEntity<AccountBalanceResponseDTO> balance(String id) {
         return executeQuery(new GetAccountBalanceQuery(id), AccountBalanceResponseDTO.class);
     }
 
     @Override
+    @CoreBankAuthorization(menuCode = "card_management", action = ActionType.CREATE)
     public ResponseEntity<IssueCardResponseDTO> issueCard(String id) {
         return execute(new IssueCardRequestDTO(id), IssueCardResponseDTO.class);
     }
 
     @Override
     @SuppressWarnings("unchecked")
+    @CoreBankAuthorization(menuCode = "account_management", action = ActionType.READ)
     public ResponseEntity<Page<TransactionHistoryItemDTO>> history(
             String id, Instant from, Instant to, int page, int size) {
         return executeQuery(
