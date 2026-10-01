@@ -23,7 +23,9 @@ public class TransferProposalControllerImpl extends BaseController implements Tr
     @Override
     public ResponseEntity<TransferProposalResponseDTO> create(CreateTransferProposalCommand request) {
         // initiatorCustomerId được lấy từ security context trong môi trường thực.
-        // Demo: để null → handler bỏ qua kiểm tra quyền.
+        if (request.getInitiatorCustomerId() == null || request.getInitiatorCustomerId().isBlank()) {
+            request.setInitiatorCustomerId("demo-user");
+        }
         TransferProposalResponseDTO result = dispatcher.dispatch(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
@@ -32,7 +34,7 @@ public class TransferProposalControllerImpl extends BaseController implements Tr
     public ResponseEntity<TransferProposalResponseDTO> confirm(String id) {
         ConfirmTransferProposalCommand command = ConfirmTransferProposalCommand.builder()
             .proposalId(id)
-            // confirmerCustomerId: lấy từ SecurityContext — demo để null
+            .confirmerCustomerId("demo-user") // demo: hardcode instead of null
             .build();
         return execute(command, TransferProposalResponseDTO.class);
     }

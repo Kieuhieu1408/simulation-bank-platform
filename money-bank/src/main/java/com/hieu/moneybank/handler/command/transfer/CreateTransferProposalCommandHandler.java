@@ -87,7 +87,7 @@ public class CreateTransferProposalCommandHandler
         );
 
         try {
-            TransferProposal saved = proposalService.save(proposal);
+            TransferProposal saved = proposalService.saveRequiresNew(proposal);
             log.info("eventName=PROPOSAL_CREATED proposalId={} sourceAccountId={} destinationAccountId={} amount={} currency={}",
                 saved.getId(), saved.getSourceAccountId(), saved.getDestinationAccountId(),
                 saved.getAmount(), saved.getCurrency());

@@ -2,7 +2,7 @@ package com.hieu.moneybank.config;
 
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
@@ -14,38 +14,22 @@ import java.util.Map;
 
 /**
  * Kafka producer factory cho Outbox publisher (U-07).
- *
- * <h3>Thiết kế</h3>
- * <ul>
- *   <li>Key = String (proposalId) — đảm bảo ordering per aggregate.</li>
- *   <li>Value = String (JSON payload) — giữ encoding đơn giản, không dùng Avro vì
- *       Schema Registry chưa được chốt (OQ-P1-01). Khi chốt, đổi serializer ở đây.</li>
- *   <li>{@code acks=all} + {@code enable.idempotence=true} — không mất event khi
- *       broker failover. Phù hợp với flow tài chính.</li>
- *   <li>{@code linger.ms=0} — Outbox Dispatcher đã tự điều tiết tốc độ, không cần
- *       batching thêm tại producer.</li>
- * </ul>
- *
- * <p>Bean này được tạo chỉ khi {@code spring.kafka.bootstrap-servers} được cấu hình
- * (Spring Boot auto-config sẽ không khởi động Kafka client nếu thiếu bootstrap-servers).
- * Khi Kafka chưa available, {@code OutboxDispatcher} cũng tự tắt vì thiếu
- * {@link com.hieu.common.outbox.OutboxMessagePublisher} bean.
  */
 @Configuration
 public class OutboxKafkaConfig {
 
-    /**
-     * Producer factory với cấu hình tối ưu cho reliability.
-     *
-     * <p>Override một phần cấu hình từ {@link KafkaProperties} Spring Boot auto-config:
-     * chỉ cần set acks và idempotence, bootstrap-servers lấy từ yaml.
-     */
+    @Value("${spring.kafka.bootstrap-servers:}")
+    private String bootstrapServers;
+
     @Bean
     public ProducerFactory<String, String> outboxProducerFactory(
-            KafkaProperties kafkaProperties,
             OutboxKafkaProperties outboxKafkaProperties) {
 
-        Map<String, Object> props = new HashMap<>(kafkaProperties.buildProducerProperties(null));
+        Map<String, Object> props = new HashMap<>();
+
+        if (bootstrapServers != null && !bootstrapServers.isBlank()) {
+            props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        }
 
         // Key + Value serializer
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,   StringSerializer.class);
@@ -74,10 +58,6 @@ public class OutboxKafkaConfig {
         return new DefaultKafkaProducerFactory<>(props);
     }
 
-    /**
-     * KafkaTemplate cho Outbox publisher — inject vào
-     * {@link com.hieu.moneybank.messaging.KafkaOutboxMessagePublisher}.
-     */
     @Bean
     public KafkaTemplate<String, String> outboxKafkaTemplate(
             ProducerFactory<String, String> outboxProducerFactory) {
