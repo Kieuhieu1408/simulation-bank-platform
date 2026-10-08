@@ -31,12 +31,20 @@ public class GetTransferProposalQueryHandler {
             implements QueryHandler<GetProposalByIdQuery, TransferProposalResponseDTO> {
 
         private final TransferProposalRepository repository;
+        private final com.hieu.common.security.IdentityContextResolver identityContextResolver;
 
         @Override
         public TransferProposalResponseDTO handle(GetProposalByIdQuery query) {
-            return repository.findById(query.proposalId())
+            TransferProposalResponseDTO proposal = repository.findById(query.proposalId())
                 .map(TransferProposalResponseDTO::from)
                 .orElseThrow(() -> new NotFoundException("Proposal không tồn tại: " + query.proposalId()));
+                
+            String currentUserId = identityContextResolver.requireCurrent().customerId();
+            if (!currentUserId.equals(proposal.initiatorCustomerId())) {
+                throw new org.springframework.security.access.AccessDeniedException("Bạn không có quyền xem proposal này");
+            }
+            
+            return proposal;
         }
     }
 
@@ -57,9 +65,19 @@ public class GetTransferProposalQueryHandler {
             implements QueryHandler<GetProposalsByAccountQuery, Page<TransferProposalResponseDTO>> {
 
         private final TransferProposalRepository repository;
+        private final com.hieu.moneybank.repository.AccountRepository accountRepository;
+        private final com.hieu.common.security.IdentityContextResolver identityContextResolver;
 
         @Override
         public Page<TransferProposalResponseDTO> handle(GetProposalsByAccountQuery query) {
+            String currentUserId = identityContextResolver.requireCurrent().customerId();
+            com.hieu.moneybank.domain.Account account = accountRepository.findById(query.accountId())
+                .orElseThrow(() -> new NotFoundException("Tài khoản không tồn tại: " + query.accountId()));
+                
+            if (!currentUserId.equals(account.getCustomer().getCifNumber())) {
+                throw new org.springframework.security.access.AccessDeniedException("Bạn không có quyền xem lịch sử tài khoản này");
+            }
+
             return repository.findByAccountId(
                 query.accountId(), query.from(), query.to(), query.pageable()
             ).map(TransferProposalResponseDTO::from);

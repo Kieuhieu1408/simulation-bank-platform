@@ -1,8 +1,9 @@
 package com.hieu.moneybank.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import io.netty.channel.ChannelOption;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProvider;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProviderBuilder;
@@ -11,6 +12,7 @@ import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizedCli
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.client.web.reactive.function.client.ServletOAuth2AuthorizedClientExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 
 /**
  * Cấu hình WebClient dùng cho service-to-service calls.
@@ -25,9 +27,6 @@ import org.springframework.web.reactive.function.client.WebClient;
  */
 @Configuration
 public class WebClientConfig {
-
-    @Value("${corebank.url:http://localhost:8180}")
-    private String corebankUrl;
 
     /**
      * OAuth2AuthorizedClientManager quản lý vòng đời token:
@@ -53,15 +52,23 @@ public class WebClientConfig {
      * Registration name "moneybank-internal" khớp với application.yaml.
      */
     @Bean("corebankWebClient")
-    public WebClient corebankWebClient(OAuth2AuthorizedClientManager authorizedClientManager) {
+    public WebClient corebankWebClient(OAuth2AuthorizedClientManager authorizedClientManager,
+                                       CorebankProperties corebankProperties) {
         ServletOAuth2AuthorizedClientExchangeFilterFunction oauth2Filter =
                 new ServletOAuth2AuthorizedClientExchangeFilterFunction(authorizedClientManager);
 
         // Chỉ định registration nào sẽ được dùng mặc định cho client này
         oauth2Filter.setDefaultClientRegistrationId("moneybank-internal");
 
+        // Timeout lấy từ yaml (corebank.connect-timeout / corebank.response-timeout)
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS,
+                        (int) corebankProperties.getConnectTimeout().toMillis())
+                .responseTimeout(corebankProperties.getResponseTimeout());
+
         return WebClient.builder()
-                .baseUrl(corebankUrl)
+                .baseUrl(corebankProperties.getUrl())
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .apply(oauth2Filter.oauth2Configuration())
                 .build();
     }

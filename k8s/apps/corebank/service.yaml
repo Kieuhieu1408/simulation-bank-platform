@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: corebank
+  namespace: sim-bank
+spec:
+  selector:
+    app: corebank
+  ports:
+    - protocol: TCP
+      port: 8180
+      targetPort: 8180

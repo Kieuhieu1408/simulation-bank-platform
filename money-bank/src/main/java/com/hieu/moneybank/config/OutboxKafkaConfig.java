@@ -52,6 +52,17 @@ public class OutboxKafkaConfig {
         props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG,
                 String.valueOf(outboxKafkaProperties.getRequestTimeoutMs()));
 
+        // Delivery timeout = send-timeout của dispatcher: sau khi dispatcher coi lần
+        // thử là lỗi, producer không được tiếp tục gửi ngầm. Kafka yêu cầu
+        // delivery.timeout.ms >= linger.ms + request.timeout.ms.
+        long sendTimeoutMs = outboxKafkaProperties.getSendTimeout().toMillis();
+        if (sendTimeoutMs < outboxKafkaProperties.getRequestTimeoutMs()) {
+            throw new IllegalStateException(
+                    "money-bank.kafka.send-timeout (" + sendTimeoutMs + "ms) phải >= request-timeout-ms ("
+                            + outboxKafkaProperties.getRequestTimeoutMs() + "ms)");
+        }
+        props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, String.valueOf(sendTimeoutMs));
+
         // Không buffer thêm: OutboxDispatcher tự điều tiết
         props.put(ProducerConfig.LINGER_MS_CONFIG, "0");
 

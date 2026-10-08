@@ -38,6 +38,22 @@ public class OutboxKafkaProperties {
     /** Số lần retry nội bộ của KafkaTemplate khi broker tạm thời không respond. */
     private int retries = 3;
 
+    /**
+     * Thời gian tối đa chờ broker ack cho một lần publish (blocking). Cũng được đặt
+     * làm {@code delivery.timeout.ms} của producer để producer không tiếp tục gửi
+     * sau khi dispatcher đã coi lần thử là lỗi. Phải lớn hơn {@code request-timeout-ms}
+     * và nhỏ hơn {@code money-bank.outbox.lease-duration}.
+     */
+    private java.time.Duration sendTimeout = java.time.Duration.ofSeconds(10);
+
+    public java.time.Duration getSendTimeout() {
+        return sendTimeout;
+    }
+
+    public void setSendTimeout(java.time.Duration sendTimeout) {
+        this.sendTimeout = sendTimeout;
+    }
+
     public String getTransferEventsTopic() {
         return transferEventsTopic;
     }

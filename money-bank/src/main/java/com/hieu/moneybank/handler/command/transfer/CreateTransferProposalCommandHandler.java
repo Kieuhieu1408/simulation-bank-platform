@@ -11,21 +11,25 @@ import com.hieu.moneybank.service.command.AccountCommandService;
 import com.hieu.moneybank.service.command.TransferProposalCommandService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Handler tạo Transfer Proposal (U-06 bước 1/2).
  *
  * <h3>Luồng xử lý</h3>
  * <ol>
- *   <li>Idempotency check: nếu idempotencyKey đã tồn tại → trả lại proposal cũ.</li>
  *   <li>Validate accounts tồn tại và ACTIVE.</li>
+ *   <li>Kiểm tra account nguồn thuộc về người khởi tạo (từ JWT) — nếu không: 403.</li>
  *   <li>Validate currency khớp giữa lệnh và tài khoản nguồn.</li>
  *   <li>Kiểm tra domain invariants qua TransferProposal constructor.</li>
  *   <li>Lưu proposal với status PENDING.</li>
  * </ol>
+ *
+ * <p>Proposal không idempotent: mỗi lần gọi tạo một proposal mới (tính nhất quán chặt
+ * chỉ cần ở bước chuyển tiền). Handler không mở transaction ngoài: các lần đọc không
+ * cần transaction, và việc lưu nằm trong transaction ngắn của
+ * {@link TransferProposalCommandService#save}.
  *
  * <p>Corebank <b>chưa</b> được gọi ở bước này.
  * Chỉ là bước "đặt lệnh" — Corebank sẽ được gọi tại {@link ConfirmTransferProposalCommandHandler}.
@@ -40,25 +44,18 @@ public class CreateTransferProposalCommandHandler
     private final TransferProposalCommandService proposalService;
 
     @Override
-    @Transactional
     public TransferProposalResponseDTO handle(CreateTransferProposalCommand command) {
 
-        // 1. Idempotency: nếu đã có proposal với cùng key → trả lại ngay
-        return proposalService.findByIdempotencyKey(command.getIdempotencyKey())
-            .map(existing -> {
-                log.info("eventName=PROPOSAL_IDEMPOTENT_HIT proposalId={} status={}",
-                    existing.getId(), existing.getStatus());
-                return TransferProposalResponseDTO.from(existing);
-            })
-            .orElseGet(() -> createNewProposal(command));
-    }
-
-    private TransferProposalResponseDTO createNewProposal(CreateTransferProposalCommand command) {
-
-        // 2. Validate accounts tồn tại
+        // 1. Validate accounts tồn tại
         Account source = accountCommandService.findById(command.getSourceAccountId())
             .orElseThrow(() -> new NotFoundException(
                 "Tài khoản nguồn không tồn tại: " + command.getSourceAccountId()));
+
+        // 2. Ownership: account nguồn phải thuộc người khởi tạo (customerId từ JWT)
+        if (!source.getCustomer().getCifNumber().equals(command.getInitiatorCustomerId())) {
+            log.warn("eventName=PROPOSAL_SOURCE_NOT_OWNED sourceAccountId={}", source.getId());
+            throw new AccessDeniedException("Tài khoản nguồn không thuộc khách hàng đang đăng nhập");
+        }
 
         Account destination = accountCommandService.findById(command.getDestinationAccountId())
             .orElseThrow(() -> new NotFoundException(
@@ -82,26 +79,14 @@ public class CreateTransferProposalCommandHandler
             command.getDestinationAccountId(),
             command.getAmount(),
             command.getCurrency(),
-            command.getIdempotencyKey(),
             command.getDescription()
         );
 
-        try {
-            TransferProposal saved = proposalService.saveRequiresNew(proposal);
-            log.info("eventName=PROPOSAL_CREATED proposalId={} sourceAccountId={} destinationAccountId={} amount={} currency={}",
-                saved.getId(), saved.getSourceAccountId(), saved.getDestinationAccountId(),
-                saved.getAmount(), saved.getCurrency());
-            return TransferProposalResponseDTO.from(saved);
-
-        } catch (DataIntegrityViolationException e) {
-            // Race condition: hai request cùng lúc với cùng idempotencyKey
-            // → kẻ thua sẽ bị chặn bởi UK. Đọc lại và trả về proposal đã tồn tại.
-            log.warn("eventName=PROPOSAL_IDEMPOTENCY_RACE_RESOLVED key={}", command.getIdempotencyKey());
-            return proposalService.findByIdempotencyKey(command.getIdempotencyKey())
-                .map(TransferProposalResponseDTO::from)
-                .orElseThrow(() -> new IllegalStateException(
-                    "UK violation nhưng không tìm lại được proposal — bất đồng bộ DB"));
-        }
+        TransferProposal saved = proposalService.save(proposal);
+        log.info("eventName=PROPOSAL_CREATED proposalId={} sourceAccountId={} destinationAccountId={} amount={} currency={}",
+            saved.getId(), saved.getSourceAccountId(), saved.getDestinationAccountId(),
+            saved.getAmount(), saved.getCurrency());
+        return TransferProposalResponseDTO.from(saved);
     }
 
     private void validateAccountActive(Account account, String label) {

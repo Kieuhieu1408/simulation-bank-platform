@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: corebank
+  namespace: sim-bank
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: corebank
+  template:
+    metadata:
+      labels:
+        app: corebank
+    spec:
+      containers:
+        - name: corebank
+          image: harbor.sim-bank.local/sim-bank/corebank:latest
+          ports:
+            - containerPort: 8180
+          envFrom:
+            - configMapRef:
+                name: sim-bank-common
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8180
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8180
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]

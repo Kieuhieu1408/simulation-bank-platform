@@ -102,6 +102,7 @@ public class TransferProposalCommandServiceImpl implements TransferProposalComma
         } catch (JsonProcessingException e) {
             log.error("eventName=OUTBOX_SERIALIZE_FAILED proposalId={} eventType={} — event bị mất",
                 proposal.getId(), eventType, e);
+            throw new IllegalStateException("Failed to serialize outbox event", e);
         }
     }
 

@@ -40,7 +40,7 @@ CREATE TABLE transfer_proposals (
     updated_at              TIMESTAMP WITH TIME ZONE NOT NULL,
 
     -- Optimistic Concurrency Control
-    version                 NUMBER(19, 0)   NOT NULL DEFAULT 0,
+    version                 NUMBER(19, 0)   DEFAULT 0 NOT NULL,
 
     -- Constraints
     CONSTRAINT pk_transfer_proposals            PRIMARY KEY (id),

@@ -22,9 +22,8 @@ import java.util.UUID;
  *   <li>TRF-INV-001: amount > 0.</li>
  *   <li>TRF-INV-002: sourceAccountId ≠ destinationAccountId.</li>
  *   <li>TRF-INV-003: currency đúng ISO-4217 3 ký tự.</li>
- *   <li>TRF-INV-004: idempotencyKey không được null/blank.</li>
  *   <li>TRF-INV-005: confirm() chỉ được gọi khi trạng thái PENDING.</li>
- *   <li>TRF-INV-006: mỗi idempotencyKey chỉ được dùng cho một intent (UK DB).</li>
+ *   <li>TRF-INV-006: idempotencyKey do server sinh (= id), chỉ dùng cho lời gọi Corebank.</li>
  * </ul>
  *
  * <p>Domain invariant được kiểm tra tại constructor và từng phương thức chuyển
@@ -116,12 +115,15 @@ public class TransferProposal {
      * <p>Tất cả bất biến được kiểm tra tại đây. Proposal chỉ hợp lệ khi qua được
      * constructor này.
      *
+     * <p>Proposal không idempotent ở tầng tạo: mỗi lần gọi tạo một proposal mới.
+     * {@code idempotencyKey} được sinh server-side (= id proposal) và chỉ dùng làm
+     * idempotency key khi gọi Corebank, để confirm lại không bao giờ chuyển tiền hai lần.
+     *
      * @param initiatorCustomerId CIF từ identity context — không từ body
      * @param sourceAccountId     account nguồn
      * @param destinationAccountId account đích
-     * @param amount              số tiền > 0
+     * @param amount              số tiền &gt; 0
      * @param currency            mã tiền tệ ISO-4217
-     * @param idempotencyKey      key duy nhất do client tạo
      * @param description         mô tả giao dịch (nullable)
      */
     public TransferProposal(String initiatorCustomerId,
@@ -129,8 +131,13 @@ public class TransferProposal {
                             String destinationAccountId,
                             BigDecimal amount,
                             String currency,
-                            String idempotencyKey,
                             String description) {
+        if (initiatorCustomerId == null || initiatorCustomerId.isBlank()) {
+            throw new IllegalArgumentException("initiatorCustomerId không được để trống");
+        }
+        if (sourceAccountId == null || destinationAccountId == null) {
+            throw new IllegalArgumentException("sourceAccountId và destinationAccountId không được null");
+        }
         // TRF-INV-002: source ≠ destination
         if (sourceAccountId.equals(destinationAccountId)) {
             throw new IllegalArgumentException("TRF-INV-002: sourceAccountId và destinationAccountId phải khác nhau");
@@ -143,10 +150,6 @@ public class TransferProposal {
         if (currency == null || !currency.matches("[A-Za-z]{3}")) {
             throw new IllegalArgumentException("TRF-INV-003: currency phải là mã ISO-4217 3 ký tự");
         }
-        // TRF-INV-004: idempotencyKey không blank
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new IllegalArgumentException("TRF-INV-004: idempotencyKey không được để trống");
-        }
 
         Instant now = Instant.now();
         this.id = UUID.randomUUID().toString();
@@ -155,7 +158,9 @@ public class TransferProposal {
         this.destinationAccountId = destinationAccountId;
         this.amount = amount;
         this.currency = currency.toUpperCase();
-        this.idempotencyKey = idempotencyKey;
+        // Key gửi Corebank: sinh server-side, duy nhất theo proposal (UUID 36 ký tự,
+        // khớp [A-Za-z0-9_-]{16,64}).
+        this.idempotencyKey = this.id;
         this.description = description;
         this.status = ProposalStatus.PENDING;
         this.createdAt = now;

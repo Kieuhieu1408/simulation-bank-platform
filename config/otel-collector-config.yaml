@@ -1,0 +1,57 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # 1. Batch processor cho performance
+  batch:
+
+  # 2. Transform processor để che data (Redaction)
+  transform/redact_pii:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          # Regex che CCCD (Giả định 12 số)
+          - replace_pattern(body, "(?i)(cccd|id|idcard)[\\s:=]*(\\d{4})\\d{4}(\\d{4})", "$1: $2****$3")
+          
+          # Regex che SĐT (10 số, bắt đầu bằng 0)
+          - replace_pattern(body, "(?i)(phone|sdt|tel)[\\s:=]*(0\\d{2})\\d{4}(\\d{3})", "$1: $2****$3")
+          
+          # Regex mạnh bạo hơn để bắt số 12 số đứng liền kề (CCCD thô)
+          - replace_match(body, "\\b\\d{12}\\b", "************")
+          
+          # Regex bắt SĐT đứng trơ trọi (09xxxx)
+          - replace_match(body, "\\b0\\d{9}\\b", "0xx-xxx-xxxx")
+
+exporters:
+  # Xuất ra terminal của Collector để dễ debug
+  logging:
+    verbosity: detailed
+  
+  # Xuất Traces qua Jaeger (đã có sẵn trong stack của bạn)
+  otlp/jaeger:
+    endpoint: "jaeger:4317"
+    tls:
+      insecure: true
+
+  # Xuất Logs qua Loki (sẽ thêm vào compose.yaml)
+  otlphttp/loki:
+    endpoint: "http://loki:3100/otlp"
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    logs:
+      receivers: [otlp]
+      processors: [transform/redact_pii, batch]
+      exporters: [logging, otlphttp/loki]

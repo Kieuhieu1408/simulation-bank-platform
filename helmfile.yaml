@@ -1,0 +1,13 @@
+releases:
+  - name: sim-bank-infra
+    chart: ./k8s/infra
+    namespace: sim-bank
+  - name: sim-bank-observability
+    chart: ./k8s/observability
+    namespace: sim-bank
+  - name: sim-bank-apps
+    chart: ./k8s/apps
+    namespace: sim-bank
+    needs: 
+      - sim-bank/sim-bank-infra
+      - sim-bank/sim-bank-observability

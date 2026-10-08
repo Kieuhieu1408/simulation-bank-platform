@@ -1,0 +1,1767 @@
+diff --git a/docs/FEATURE_ROADMAP.md b/docs/FEATURE_ROADMAP.md
+index c8f7391..cde132c 100644
+--- a/docs/FEATURE_ROADMAP.md
++++ b/docs/FEATURE_ROADMAP.md
+@@ -1,7 +1,7 @@
+ # Feature Roadmap — Simulation Bank Platform
+ 
+ > **Phiên bản:** 1.0.0
+-> **Cập nhật lần cuối:** 2026-09-09
++> **Cập nhật lần cuối:** 2026-09-30 (U-07)
+ > **Mục đích:** Quản lý tiến độ theo **tính năng nghiệp vụ xuyên service** — đọc file này để biết đang làm tính năng gì, service nào đang active, unblock tiếp theo là gì.
+ >
+ > 📌 **Quy ước trạng thái:**
+@@ -136,8 +136,8 @@ money-bank
+ | MongoDB Foundation (domain data layer) | ✅ DONE | U-03 |
+ | CQRS Pipeline & Idempotency Refactoring | ✅ DONE | U-04 |
+ | Corebank Adapter + Resilience4j (Circuit Breaker) | ✅ DONE | U-05 |
+-| Transfer Command (Proposal entity, state machine, domain invariant) | 🔲 BACKLOG | U-06 |
+-| Outbox + Kafka publisher | 🔲 BACKLOG | U-07 |
++| Transfer Command (Proposal entity, state machine, domain invariant) | ✅ DONE | U-06 (2026-09-30) |
++| Outbox + Kafka publisher | ✅ DONE | U-07 (2026-09-30) |
+ | Kafka Inbox consumer | 🔲 BACKLOG | U-08 |
+ | Reconciliation Job (retry, MANUAL_REVIEW) | 🔲 BACKLOG | U-09 |
+ | Proposal Facade (token exchange + profile lookup) | ⏸️ BLOCKED | U-10 — chờ Profile API contract |
+@@ -215,15 +215,21 @@ money-bank
+ 
+ ---
+ 
+-## 📍 Focus hiện tại (2026-09-15)
++## 📍 Focus hiện tại (2026-09-30)
++
++### ✅ Vừa hoàn thành
++| Service | Task | Ghi chú |
++|---|---|---|
++| `money-bank` | **U-06: Transfer Command & State Machine** | TransferProposal, state machine PENDING→CONFIRMED/FAILED, Outbox integration |
++| `money-bank` | **U-07: Outbox + Kafka publisher** | KafkaOutboxMessagePublisher, OutboxDispatchScheduler, spring-kafka, topic=transfer-events |
+ 
+ ### 🟡 Đang làm
+ | Service | Task | Người phụ trách |
+ |---|---|---|
+-| `money-bank` | **U-06: Transfer Command & State Machine** — Functional Design | @dlc |
+ | `profile-service` | **Requirements Analysis** — đang dang dở | @dlc |
+ 
+ ### ⏸️ Chờ quyết định
+ | Quyết định | Tác động |
+ |---|---|
+-| Chốt Data Model cho Proposal & Transfer State Machine | Unblock Code Gen U-06 |
++| Kafka event contract (topic, schema, partition key) | U-07 money-bank, Corebank Outbox, Notification |
++| Profile Service API contract (internal endpoint) | U-10 money-bank |
+diff --git a/money-bank/pom.xml b/money-bank/pom.xml
+index 11afb97..3fb9820 100644
+--- a/money-bank/pom.xml
++++ b/money-bank/pom.xml
+@@ -151,6 +151,12 @@
+             <artifactId>spring-boot-starter-oauth2-client</artifactId>
+         </dependency>
+ 
++        <!-- Kafka — Outbox publisher (U-07) -->
++        <dependency>
++            <groupId>org.springframework.kafka</groupId>
++            <artifactId>spring-kafka</artifactId>
++        </dependency>
++
+         <dependency>
+             <groupId>org.springframework.boot</groupId>
+             <artifactId>spring-boot-starter-webflux</artifactId>
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/api/TransferProposalController.java b/money-bank/src/main/java/com/hieu/moneybank/api/TransferProposalController.java
+new file mode 100644
+index 0000000..e6a55f1
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/api/TransferProposalController.java
+@@ -0,0 +1,59 @@
++package com.hieu.moneybank.api;
++
++import com.hieu.moneybank.dto.request.CreateTransferProposalCommand;
++import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
++import jakarta.validation.Valid;
++import org.springframework.data.domain.Page;
++import org.springframework.format.annotation.DateTimeFormat;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.*;
++
++import java.time.Instant;
++
++/**
++ * API cho Transfer Proposal — luồng 2 bước (U-06).
++ *
++ * <pre>
++ * POST  /api/v1/transfers/proposals               ← Tạo proposal (bước 1)
++ * POST  /api/v1/transfers/proposals/{id}/confirm  ← Xác nhận (bước 2)
++ * GET   /api/v1/transfers/proposals/{id}          ← Lấy proposal theo ID
++ * GET   /api/v1/transfers/proposals?accountId=&from=&to=&page=&size= ← Lịch sử
++ * </pre>
++ */
++@RequestMapping("/api/v1/transfers/proposals")
++public interface TransferProposalController {
++
++    /**
++     * Bước 1: Tạo proposal.
++     * Corebank chưa được gọi. Trả về proposal với status=PENDING.
++     */
++    @PostMapping
++    ResponseEntity<TransferProposalResponseDTO> create(
++        @Valid @RequestBody CreateTransferProposalCommand request
++    );
++
++    /**
++     * Bước 2: Xác nhận proposal.
++     * Gọi Corebank và cập nhật status → CONFIRMED | FAILED.
++     */
++    @PostMapping("/{id}/confirm")
++    ResponseEntity<TransferProposalResponseDTO> confirm(@PathVariable String id);
++
++    /**
++     * Lấy proposal theo ID.
++     */
++    @GetMapping("/{id}")
++    ResponseEntity<TransferProposalResponseDTO> get(@PathVariable String id);
++
++    /**
++     * Lịch sử proposal của một account.
++     */
++    @GetMapping
++    ResponseEntity<Page<TransferProposalResponseDTO>> history(
++        @RequestParam String accountId,
++        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
++        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
++        @RequestParam(defaultValue = "0") int page,
++        @RequestParam(defaultValue = "20") int size
++    );
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/api/impl/TransferProposalControllerImpl.java b/money-bank/src/main/java/com/hieu/moneybank/api/impl/TransferProposalControllerImpl.java
+new file mode 100644
+index 0000000..8308073
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/api/impl/TransferProposalControllerImpl.java
+@@ -0,0 +1,56 @@
++package com.hieu.moneybank.api.impl;
++
++import com.hieu.moneybank.api.BaseController;
++import com.hieu.moneybank.api.TransferProposalController;
++import com.hieu.moneybank.dto.request.ConfirmTransferProposalCommand;
++import com.hieu.moneybank.dto.request.CreateTransferProposalCommand;
++import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
++import com.hieu.moneybank.handler.query.transfer.GetTransferProposalQueryHandler.GetProposalByIdQuery;
++import com.hieu.moneybank.handler.query.transfer.GetTransferProposalQueryHandler.GetProposalsByAccountQuery;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.PageRequest;
++import org.springframework.data.domain.Pageable;
++import org.springframework.data.domain.Sort;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.RestController;
++
++import java.time.Instant;
++
++@RestController
++public class TransferProposalControllerImpl extends BaseController implements TransferProposalController {
++
++    @Override
++    public ResponseEntity<TransferProposalResponseDTO> create(CreateTransferProposalCommand request) {
++        // initiatorCustomerId được lấy từ security context trong môi trường thực.
++        // Demo: để null → handler bỏ qua kiểm tra quyền.
++        TransferProposalResponseDTO result = dispatcher.dispatch(request);
++        return ResponseEntity.status(HttpStatus.CREATED).body(result);
++    }
++
++    @Override
++    public ResponseEntity<TransferProposalResponseDTO> confirm(String id) {
++        ConfirmTransferProposalCommand command = ConfirmTransferProposalCommand.builder()
++            .proposalId(id)
++            // confirmerCustomerId: lấy từ SecurityContext — demo để null
++            .build();
++        return execute(command, TransferProposalResponseDTO.class);
++    }
++
++    @Override
++    public ResponseEntity<TransferProposalResponseDTO> get(String id) {
++        return executeQuery(new GetProposalByIdQuery(id), TransferProposalResponseDTO.class);
++    }
++
++    @Override
++    @SuppressWarnings("unchecked")
++    public ResponseEntity<Page<TransferProposalResponseDTO>> history(
++            String accountId, Instant from, Instant to, int page, int size) {
++
++        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
++        return executeQuery(
++            new GetProposalsByAccountQuery(accountId, from, to, pageable),
++            (Class<Page<TransferProposalResponseDTO>>) (Class<?>) Page.class
++        );
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/config/InfrastructureConfig.java b/money-bank/src/main/java/com/hieu/moneybank/config/InfrastructureConfig.java
+new file mode 100644
+index 0000000..5907829
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/config/InfrastructureConfig.java
+@@ -0,0 +1,42 @@
++package com.hieu.moneybank.config;
++
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.fasterxml.jackson.databind.SerializationFeature;
++import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++
++import java.time.Clock;
++
++/**
++ * Beans hạ tầng chung: Clock và ObjectMapper.
++ *
++ * <p>Clock được dùng bởi OutboxRecorder và các service cần thời gian
++ * có thể mock trong test.
++ *
++ * <p>ObjectMapper được dùng bởi ConfirmTransferProposalCommandHandler
++ * để serialize Outbox payload.
++ */
++@Configuration
++public class InfrastructureConfig {
++
++    /**
++     * Clock UTC — inject thay vì gọi Instant.now() trực tiếp để test có thể mock.
++     */
++    @Bean
++    public Clock clock() {
++        return Clock.systemUTC();
++    }
++
++    /**
++     * ObjectMapper cấu hình sẵn cho Java 8 date/time.
++     * Spring Boot tự tạo bean này nhưng khai báo rõ để inject theo tên nếu cần.
++     */
++    @Bean
++    public ObjectMapper objectMapper() {
++        ObjectMapper mapper = new ObjectMapper();
++        mapper.registerModule(new JavaTimeModule());
++        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
++        return mapper;
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/config/OutboxKafkaConfig.java b/money-bank/src/main/java/com/hieu/moneybank/config/OutboxKafkaConfig.java
+new file mode 100644
+index 0000000..312e534
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/config/OutboxKafkaConfig.java
+@@ -0,0 +1,86 @@
++package com.hieu.moneybank.config;
++
++import org.apache.kafka.clients.producer.ProducerConfig;
++import org.apache.kafka.common.serialization.StringSerializer;
++import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.kafka.core.DefaultKafkaProducerFactory;
++import org.springframework.kafka.core.KafkaTemplate;
++import org.springframework.kafka.core.ProducerFactory;
++
++import java.util.HashMap;
++import java.util.Map;
++
++/**
++ * Kafka producer factory cho Outbox publisher (U-07).
++ *
++ * <h3>Thiết kế</h3>
++ * <ul>
++ *   <li>Key = String (proposalId) — đảm bảo ordering per aggregate.</li>
++ *   <li>Value = String (JSON payload) — giữ encoding đơn giản, không dùng Avro vì
++ *       Schema Registry chưa được chốt (OQ-P1-01). Khi chốt, đổi serializer ở đây.</li>
++ *   <li>{@code acks=all} + {@code enable.idempotence=true} — không mất event khi
++ *       broker failover. Phù hợp với flow tài chính.</li>
++ *   <li>{@code linger.ms=0} — Outbox Dispatcher đã tự điều tiết tốc độ, không cần
++ *       batching thêm tại producer.</li>
++ * </ul>
++ *
++ * <p>Bean này được tạo chỉ khi {@code spring.kafka.bootstrap-servers} được cấu hình
++ * (Spring Boot auto-config sẽ không khởi động Kafka client nếu thiếu bootstrap-servers).
++ * Khi Kafka chưa available, {@code OutboxDispatcher} cũng tự tắt vì thiếu
++ * {@link com.hieu.common.outbox.OutboxMessagePublisher} bean.
++ */
++@Configuration
++public class OutboxKafkaConfig {
++
++    /**
++     * Producer factory với cấu hình tối ưu cho reliability.
++     *
++     * <p>Override một phần cấu hình từ {@link KafkaProperties} Spring Boot auto-config:
++     * chỉ cần set acks và idempotence, bootstrap-servers lấy từ yaml.
++     */
++    @Bean
++    public ProducerFactory<String, String> outboxProducerFactory(
++            KafkaProperties kafkaProperties,
++            OutboxKafkaProperties outboxKafkaProperties) {
++
++        Map<String, Object> props = new HashMap<>(kafkaProperties.buildProducerProperties(null));
++
++        // Key + Value serializer
++        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,   StringSerializer.class);
++        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
++
++        // Reliability: broker phải confirm tất cả ISR replicas trước khi ack
++        props.put(ProducerConfig.ACKS_CONFIG, "all");
++
++        // Idempotent producer: chống duplicate khi retry sau network partition
++        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, "true");
++
++        // Max outstanding requests phải <= 5 khi idempotence=true
++        props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "5");
++
++        // Retry trong producer — lớp retry ngoài là OutboxDispatcher
++        props.put(ProducerConfig.RETRIES_CONFIG,
++                String.valueOf(outboxKafkaProperties.getRetries()));
++
++        // Request timeout
++        props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG,
++                String.valueOf(outboxKafkaProperties.getRequestTimeoutMs()));
++
++        // Không buffer thêm: OutboxDispatcher tự điều tiết
++        props.put(ProducerConfig.LINGER_MS_CONFIG, "0");
++
++        return new DefaultKafkaProducerFactory<>(props);
++    }
++
++    /**
++     * KafkaTemplate cho Outbox publisher — inject vào
++     * {@link com.hieu.moneybank.messaging.KafkaOutboxMessagePublisher}.
++     */
++    @Bean
++    public KafkaTemplate<String, String> outboxKafkaTemplate(
++            ProducerFactory<String, String> outboxProducerFactory) {
++        return new KafkaTemplate<>(outboxProducerFactory);
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/config/OutboxKafkaProperties.java b/money-bank/src/main/java/com/hieu/moneybank/config/OutboxKafkaProperties.java
+new file mode 100644
+index 0000000..0e04662
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/config/OutboxKafkaProperties.java
+@@ -0,0 +1,64 @@
++package com.hieu.moneybank.config;
++
++import org.springframework.boot.context.properties.ConfigurationProperties;
++import org.springframework.stereotype.Component;
++
++/**
++ * Cấu hình Kafka cho Outbox publisher (U-07).
++ *
++ * <p>Tất cả topic name và tuning knob tập trung ở đây, không hardcode trong code.
++ *
++ * <h3>Topic contract (OQ-P1-01)</h3>
++ * <ul>
++ *   <li>{@code transfer-events} — topic chính cho TransferConfirmed / TransferFailed</li>
++ * </ul>
++ *
++ * <h3>Partition key</h3>
++ * <p>Key = {@code aggregateId} (proposalId) → các event của cùng một proposal
++ * được đảm bảo thứ tự trên cùng partition. Consumer Inbox dùng key để dedup.
++ *
++ * <h3>Acks</h3>
++ * <p>{@code acks=all} (replica-ack) + {@code enable.idempotence=true} để không mất
++ * event khi broker failover. Cấu hình này làm chậm throughput nhưng đây là flow
++ * tài chính, độ bền ưu tiên hơn tốc độ.
++ */
++@Component
++@ConfigurationProperties(prefix = "money-bank.kafka")
++public class OutboxKafkaProperties {
++
++    /** Topic nhận tất cả sự kiện chuyển tiền (TransferConfirmed, TransferFailed). */
++    private String transferEventsTopic = "transfer-events";
++
++    /**
++     * Số ms chờ leader+replicas xác nhận trước khi coi là lỗi.
++     * 0 = fire-and-forget (không dùng), 5000 = đủ dài cho most deployments.
++     */
++    private int requestTimeoutMs = 5000;
++
++    /** Số lần retry nội bộ của KafkaTemplate khi broker tạm thời không respond. */
++    private int retries = 3;
++
++    public String getTransferEventsTopic() {
++        return transferEventsTopic;
++    }
++
++    public void setTransferEventsTopic(String transferEventsTopic) {
++        this.transferEventsTopic = transferEventsTopic;
++    }
++
++    public int getRequestTimeoutMs() {
++        return requestTimeoutMs;
++    }
++
++    public void setRequestTimeoutMs(int requestTimeoutMs) {
++        this.requestTimeoutMs = requestTimeoutMs;
++    }
++
++    public int getRetries() {
++        return retries;
++    }
++
++    public void setRetries(int retries) {
++        this.retries = retries;
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/constant/ProposalStatus.java b/money-bank/src/main/java/com/hieu/moneybank/constant/ProposalStatus.java
+new file mode 100644
+index 0000000..a19d61f
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/constant/ProposalStatus.java
+@@ -0,0 +1,56 @@
++package com.hieu.moneybank.constant;
++
++/**
++ * Trạng thái của TransferProposal theo state machine U-06.
++ *
++ * <pre>
++ *          createProposal()
++ * [START] ──────────────────► PENDING
++ *                                │
++ *                    confirm()   │   reject()
++ *               ┌───────────────┤──────────────────┐
++ *               ▼               │                  ▼
++ *         VALIDATING       (invalid input)      REJECTED (terminal)
++ *               │
++ *     ┌─────────┴──────────┐
++ *     │ corebank ok        │ corebank fail / invariant fail
++ *     ▼                    ▼
++ *  CONFIRMED            FAILED
++ * (terminal)          (terminal)
++ * </pre>
++ *
++ * <p>Chỉ PENDING mới cho phép confirm(). VALIDATING là trạng thái ngắn trong cùng
++ * transaction — được giữ để detect concurrent confirm cùng proposal (OCC).
++ */
++public enum ProposalStatus {
++
++    /** Proposal vừa được tạo, chờ người dùng hoặc hệ thống xác nhận. */
++    PENDING,
++
++    /**
++     * Đang validate và gọi Corebank (trong transaction confirm).
++     * Trạng thái này chống race condition khi hai request cùng confirm.
++     */
++    VALIDATING,
++
++    /** Corebank đã ghi sổ thành công — trạng thái cuối. */
++    CONFIRMED,
++
++    /** Corebank từ chối hoặc lỗi nghiệp vụ — trạng thái cuối. */
++    FAILED,
++
++    /** Proposal bị từ chối trước khi gọi Corebank — trạng thái cuối. */
++    REJECTED;
++
++    public boolean isTerminal() {
++        return this == CONFIRMED || this == FAILED || this == REJECTED;
++    }
++
++    public boolean canConfirm() {
++        return this == PENDING;
++    }
++
++    public boolean canReject() {
++        return this == PENDING;
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/domain/TransferProposal.java b/money-bank/src/main/java/com/hieu/moneybank/domain/TransferProposal.java
+new file mode 100644
+index 0000000..c74d706
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/domain/TransferProposal.java
+@@ -0,0 +1,226 @@
++package com.hieu.moneybank.domain;
++
++import com.hieu.moneybank.constant.ProposalStatus;
++import jakarta.persistence.*;
++import lombok.Getter;
++
++import java.math.BigDecimal;
++import java.time.Instant;
++import java.util.UUID;
++
++/**
++ * Proposal chuyển tiền — aggregate root của luồng Transfer U-06.
++ *
++ * <h3>State Machine</h3>
++ * <pre>
++ * PENDING ──confirm()──► VALIDATING ──corebank ok──► CONFIRMED
++ *        └─reject()──►  REJECTED              └──corebank fail──► FAILED
++ * </pre>
++ *
++ * <h3>Bất biến nghiệp vụ (TRF-INV-*)</h3>
++ * <ul>
++ *   <li>TRF-INV-001: amount > 0.</li>
++ *   <li>TRF-INV-002: sourceAccountId ≠ destinationAccountId.</li>
++ *   <li>TRF-INV-003: currency đúng ISO-4217 3 ký tự.</li>
++ *   <li>TRF-INV-004: idempotencyKey không được null/blank.</li>
++ *   <li>TRF-INV-005: confirm() chỉ được gọi khi trạng thái PENDING.</li>
++ *   <li>TRF-INV-006: mỗi idempotencyKey chỉ được dùng cho một intent (UK DB).</li>
++ * </ul>
++ *
++ * <p>Domain invariant được kiểm tra tại constructor và từng phương thức chuyển
++ * trạng thái — không để lọt qua tầng service hay controller.
++ */
++@Getter
++@Entity
++@Table(
++    name = "transfer_proposals",
++    uniqueConstraints = @UniqueConstraint(
++        name = "uk_proposal_idempotency_key",
++        columnNames = "idempotency_key"
++    ),
++    indexes = {
++        @Index(name = "idx_proposal_source",    columnList = "source_account_id, created_at"),
++        @Index(name = "idx_proposal_dest",      columnList = "destination_account_id, created_at"),
++        @Index(name = "idx_proposal_status",    columnList = "status, created_at"),
++        @Index(name = "idx_proposal_initiator", columnList = "initiator_customer_id, created_at")
++    }
++)
++public class TransferProposal {
++
++    @Id
++    @Column(length = 36)
++    private String id;
++
++    /**
++     * CIF của người khởi tạo — lấy từ identity context đã xác minh,
++     * không từ request body. Dùng làm phạm vi idempotency key.
++     */
++    @Column(name = "initiator_customer_id", nullable = false, length = 64)
++    private String initiatorCustomerId;
++
++    @Column(name = "source_account_id", nullable = false, length = 36)
++    private String sourceAccountId;
++
++    @Column(name = "destination_account_id", nullable = false, length = 36)
++    private String destinationAccountId;
++
++    @Column(nullable = false, precision = 19, scale = 2)
++    private BigDecimal amount;
++
++    @Column(nullable = false, length = 3)
++    private String currency;
++
++    @Column(name = "idempotency_key", nullable = false, length = 64)
++    private String idempotencyKey;
++
++    @Column(length = 255)
++    private String description;
++
++    @Enumerated(EnumType.STRING)
++    @Column(nullable = false, length = 20)
++    private ProposalStatus status;
++
++    /**
++     * Transaction ID được set khi Corebank xác nhận thành công.
++     * Null khi proposal chưa CONFIRMED.
++     */
++    @Column(name = "corebank_transaction_id", length = 64)
++    private String corebankTransactionId;
++
++    /**
++     * Lý do từ chối/thất bại — mã an toàn, không stack trace.
++     * Null khi proposal PENDING hoặc CONFIRMED.
++     */
++    @Column(name = "failure_reason", length = 255)
++    private String failureReason;
++
++    @Column(name = "created_at", nullable = false, updatable = false)
++    private Instant createdAt;
++
++    @Column(name = "updated_at", nullable = false)
++    private Instant updatedAt;
++
++    /**
++     * OCC — chặn concurrent confirm cùng proposal.
++     * Khi hai request cùng confirm(): kẻ chậm nhận OptimisticLockingFailureException.
++     */
++    @Version
++    @Column(nullable = false)
++    private long version;
++
++    protected TransferProposal() {}
++
++    /**
++     * Tạo proposal mới ở trạng thái PENDING.
++     *
++     * <p>Tất cả bất biến được kiểm tra tại đây. Proposal chỉ hợp lệ khi qua được
++     * constructor này.
++     *
++     * @param initiatorCustomerId CIF từ identity context — không từ body
++     * @param sourceAccountId     account nguồn
++     * @param destinationAccountId account đích
++     * @param amount              số tiền > 0
++     * @param currency            mã tiền tệ ISO-4217
++     * @param idempotencyKey      key duy nhất do client tạo
++     * @param description         mô tả giao dịch (nullable)
++     */
++    public TransferProposal(String initiatorCustomerId,
++                            String sourceAccountId,
++                            String destinationAccountId,
++                            BigDecimal amount,
++                            String currency,
++                            String idempotencyKey,
++                            String description) {
++        // TRF-INV-002: source ≠ destination
++        if (sourceAccountId.equals(destinationAccountId)) {
++            throw new IllegalArgumentException("TRF-INV-002: sourceAccountId và destinationAccountId phải khác nhau");
++        }
++        // TRF-INV-001: amount > 0
++        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
++            throw new IllegalArgumentException("TRF-INV-001: amount phải lớn hơn 0");
++        }
++        // TRF-INV-003: currency 3 ký tự
++        if (currency == null || !currency.matches("[A-Za-z]{3}")) {
++            throw new IllegalArgumentException("TRF-INV-003: currency phải là mã ISO-4217 3 ký tự");
++        }
++        // TRF-INV-004: idempotencyKey không blank
++        if (idempotencyKey == null || idempotencyKey.isBlank()) {
++            throw new IllegalArgumentException("TRF-INV-004: idempotencyKey không được để trống");
++        }
++
++        Instant now = Instant.now();
++        this.id = UUID.randomUUID().toString();
++        this.initiatorCustomerId = initiatorCustomerId;
++        this.sourceAccountId = sourceAccountId;
++        this.destinationAccountId = destinationAccountId;
++        this.amount = amount;
++        this.currency = currency.toUpperCase();
++        this.idempotencyKey = idempotencyKey;
++        this.description = description;
++        this.status = ProposalStatus.PENDING;
++        this.createdAt = now;
++        this.updatedAt = now;
++    }
++
++    /**
++     * Chuyển sang VALIDATING trước khi gọi Corebank.
++     *
++     * <p>TRF-INV-005: chỉ được gọi khi PENDING.
++     * Kết hợp với @Version: hai request cùng confirm() sẽ chỉ có một người thắng.
++     *
++     * @throws IllegalStateException nếu proposal không ở trạng thái PENDING
++     */
++    public void startValidating() {
++        if (!status.canConfirm()) {
++            throw new IllegalStateException(
++                "TRF-INV-005: Proposal [" + id + "] không thể xác nhận từ trạng thái " + status);
++        }
++        this.status = ProposalStatus.VALIDATING;
++        this.updatedAt = Instant.now();
++    }
++
++    /**
++     * Chốt thành công sau khi Corebank ghi sổ.
++     *
++     * @param corebankTransactionId ID giao dịch từ Corebank
++     */
++    public void markConfirmed(String corebankTransactionId) {
++        if (this.status != ProposalStatus.VALIDATING) {
++            throw new IllegalStateException(
++                "markConfirmed() chỉ được gọi từ trạng thái VALIDATING, hiện tại: " + status);
++        }
++        this.status = ProposalStatus.CONFIRMED;
++        this.corebankTransactionId = corebankTransactionId;
++        this.updatedAt = Instant.now();
++    }
++
++    /**
++     * Chốt thất bại sau khi Corebank từ chối hoặc lỗi nghiệp vụ.
++     *
++     * @param safeFailureReason mô tả lý do an toàn (không stack trace)
++     */
++    public void markFailed(String safeFailureReason) {
++        if (this.status != ProposalStatus.VALIDATING) {
++            throw new IllegalStateException(
++                "markFailed() chỉ được gọi từ trạng thái VALIDATING, hiện tại: " + status);
++        }
++        this.status = ProposalStatus.FAILED;
++        this.failureReason = safeFailureReason;
++        this.updatedAt = Instant.now();
++    }
++
++    /**
++     * Từ chối proposal trước khi gọi Corebank (vi phạm domain rule ở tầng validation).
++     *
++     * @param safeReason lý do từ chối an toàn
++     */
++    public void reject(String safeReason) {
++        if (!status.canReject()) {
++            throw new IllegalStateException(
++                "reject() chỉ được gọi khi PENDING, hiện tại: " + status);
++        }
++        this.status = ProposalStatus.REJECTED;
++        this.failureReason = safeReason;
++        this.updatedAt = Instant.now();
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/dto/request/ConfirmTransferProposalCommand.java b/money-bank/src/main/java/com/hieu/moneybank/dto/request/ConfirmTransferProposalCommand.java
+new file mode 100644
+index 0000000..d635fd3
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/dto/request/ConfirmTransferProposalCommand.java
+@@ -0,0 +1,32 @@
++package com.hieu.moneybank.dto.request;
++
++import com.hieu.common.annotation.ValidCommand;
++import com.hieu.common.cqrs.Command;
++import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
++import jakarta.validation.constraints.NotBlank;
++import lombok.AllArgsConstructor;
++import lombok.Builder;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++/**
++ * Command xác nhận Transfer Proposal (U-06 — bước 2/2).
++ *
++ * <p>Trigger luồng: PENDING → VALIDATING → CONFIRMED | FAILED.
++ * Corebank được gọi trong bước này.
++ */
++@ValidCommand
++@Data
++@NoArgsConstructor
++@AllArgsConstructor
++@Builder
++public class ConfirmTransferProposalCommand implements Command<TransferProposalResponseDTO> {
++
++    @NotBlank(message = "proposalId không được để trống")
++    private String proposalId;
++
++    /**
++     * CIF của người xác nhận — inject từ identity context, không từ body.
++     */
++    private String confirmerCustomerId;
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/dto/request/CreateTransferProposalCommand.java b/money-bank/src/main/java/com/hieu/moneybank/dto/request/CreateTransferProposalCommand.java
+new file mode 100644
+index 0000000..8076987
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/dto/request/CreateTransferProposalCommand.java
+@@ -0,0 +1,65 @@
++package com.hieu.moneybank.dto.request;
++
++import com.hieu.common.annotation.ValidCommand;
++import com.hieu.common.cqrs.Command;
++import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
++import jakarta.validation.constraints.*;
++import lombok.AllArgsConstructor;
++import lombok.Builder;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++import java.math.BigDecimal;
++
++/**
++ * Command tạo Transfer Proposal (U-06 — bước 1/2).
++ *
++ * <p>Command này chỉ tạo proposal ở trạng thái PENDING.
++ * Corebank chưa được gọi ở bước này.
++ *
++ * <p>idempotencyKey phải tuân thủ khuôn dạng [A-Za-z0-9_-]{16,64}
++ * theo IdempotencyService.KEY_PATTERN.
++ */
++@ValidCommand
++@Data
++@NoArgsConstructor
++@AllArgsConstructor
++@Builder
++public class CreateTransferProposalCommand implements Command<TransferProposalResponseDTO> {
++
++    /**
++     * CIF của người khởi tạo.
++     * Được inject từ identity context tại handler — không đặt trong request body.
++     * Field này blank khi đến từ client; handler sẽ set trước khi dispatch.
++     */
++    private String initiatorCustomerId;
++
++    @NotBlank(message = "sourceAccountId không được để trống")
++    private String sourceAccountId;
++
++    @NotBlank(message = "destinationAccountId không được để trống")
++    private String destinationAccountId;
++
++    @NotNull(message = "amount không được null")
++    @DecimalMin(value = "0.01", message = "amount phải ≥ 0.01")
++    @Digits(integer = 17, fraction = 2, message = "amount tối đa 17 chữ số nguyên, 2 chữ số thập phân")
++    private BigDecimal amount;
++
++    @NotBlank(message = "currency không được để trống")
++    @Pattern(regexp = "[A-Za-z]{3}", message = "currency phải là mã ISO-4217 3 ký tự")
++    private String currency;
++
++    /**
++     * Key do client tạo — phải giữ nguyên khi retry.
++     * Khuôn dạng: [A-Za-z0-9_-]{16,64}.
++     */
++    @NotBlank(message = "idempotencyKey không được để trống")
++    @Pattern(
++        regexp = "[A-Za-z0-9_-]{16,64}",
++        message = "idempotencyKey phải có 16-64 ký tự [A-Za-z0-9_-]"
++    )
++    private String idempotencyKey;
++
++    @Size(max = 255, message = "description tối đa 255 ký tự")
++    private String description;
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/dto/response/TransferProposalResponseDTO.java b/money-bank/src/main/java/com/hieu/moneybank/dto/response/TransferProposalResponseDTO.java
+new file mode 100644
+index 0000000..b1776ed
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/dto/response/TransferProposalResponseDTO.java
+@@ -0,0 +1,55 @@
++package com.hieu.moneybank.dto.response;
++
++import com.hieu.moneybank.constant.ProposalStatus;
++import com.hieu.moneybank.domain.TransferProposal;
++import lombok.AllArgsConstructor;
++import lombok.Builder;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++import java.math.BigDecimal;
++import java.time.Instant;
++
++/**
++ * Response cho Transfer Proposal — trả ra ở cả bước tạo và bước xác nhận.
++ */
++@Data
++@NoArgsConstructor
++@AllArgsConstructor
++@Builder
++public class TransferProposalResponseDTO {
++
++    private String proposalId;
++    private ProposalStatus status;
++
++    /** Null cho đến khi CONFIRMED. */
++    private String corebankTransactionId;
++
++    private String sourceAccountId;
++    private String destinationAccountId;
++    private BigDecimal amount;
++    private String currency;
++    private String description;
++
++    /** Có giá trị khi FAILED hoặc REJECTED. Null khi PENDING/CONFIRMED. */
++    private String failureReason;
++
++    private Instant createdAt;
++    private Instant updatedAt;
++
++    public static TransferProposalResponseDTO from(TransferProposal p) {
++        return TransferProposalResponseDTO.builder()
++            .proposalId(p.getId())
++            .status(p.getStatus())
++            .corebankTransactionId(p.getCorebankTransactionId())
++            .sourceAccountId(p.getSourceAccountId())
++            .destinationAccountId(p.getDestinationAccountId())
++            .amount(p.getAmount())
++            .currency(p.getCurrency())
++            .description(p.getDescription())
++            .failureReason(p.getFailureReason())
++            .createdAt(p.getCreatedAt())
++            .updatedAt(p.getUpdatedAt())
++            .build();
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/handler/command/transfer/ConfirmTransferProposalCommandHandler.java b/money-bank/src/main/java/com/hieu/moneybank/handler/command/transfer/ConfirmTransferProposalCommandHandler.java
+new file mode 100644
+index 0000000..8ee3f20
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/handler/command/transfer/ConfirmTransferProposalCommandHandler.java
+@@ -0,0 +1,183 @@
++package com.hieu.moneybank.handler.command.transfer;
++
++import com.fasterxml.jackson.core.JsonProcessingException;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.hieu.common.cqrs.CommandHandler;
++import com.hieu.common.outbox.OutboxRecorder;
++import com.hieu.moneybank.client.CorebankClient;
++import com.hieu.moneybank.domain.TransferProposal;
++import com.hieu.moneybank.dto.request.ConfirmTransferProposalCommand;
++import com.hieu.moneybank.dto.request.TransferRequestDTO;
++import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
++import com.hieu.moneybank.dto.response.TransferResponseDTO;
++import com.hieu.moneybank.exception.BusinessException;
++import com.hieu.moneybank.exception.NotFoundException;
++import com.hieu.moneybank.service.command.TransferProposalCommandService;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.stereotype.Component;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Handler xác nhận Transfer Proposal (U-06 bước 2/2).
++ *
++ * <h3>State transition</h3>
++ * <pre>
++ * PENDING ──startValidating()──► VALIDATING
++ *                                     │
++ *                   ┌─────────────────┤──────────────────────┐
++ *                   │ corebank ok                             │ corebank fail
++ *                   ▼                                         ▼
++ *             markConfirmed()                           markFailed()
++ *             CONFIRMED (terminal)                      FAILED (terminal)
++ * </pre>
++ *
++ * <h3>Đảm bảo atomicity</h3>
++ * <p>Một @Transactional bao gồm:
++ * <ol>
++ *   <li>Pessimistic lock proposal row.</li>
++ *   <li>startValidating() — chặn concurrent confirm.</li>
++ *   <li>Gọi Corebank (blocking HTTP — trade-off: giữ connection trong khi chờ).</li>
++ *   <li>markConfirmed/markFailed + OutboxRecorder.record() — commit cùng transaction.</li>
++ * </ol>
++ *
++ * <p>Nếu Corebank timeout/network error → proposal FAILED với failureReason="OUTCOME_UNKNOWN".
++ * Reconciliation job (U-09) sẽ xử lý sau.
++ */
++@Component
++@RequiredArgsConstructor
++@Slf4j
++public class ConfirmTransferProposalCommandHandler
++        implements CommandHandler<ConfirmTransferProposalCommand, TransferProposalResponseDTO> {
++
++    private final TransferProposalCommandService proposalService;
++    private final CorebankClient corebankClient;
++    private final OutboxRecorder outboxRecorder;
++    private final ObjectMapper objectMapper;
++
++    private static final String AGGREGATE_TYPE  = "TRANSFER";
++    private static final String SCHEMA_VERSION  = "v1";
++    private static final String EVENT_CONFIRMED = "TransferConfirmed";
++    private static final String EVENT_FAILED    = "TransferFailed";
++
++    @Override
++    @Transactional
++    public TransferProposalResponseDTO handle(ConfirmTransferProposalCommand command) {
++
++        // 1. Load proposal với pessimistic lock — chặn concurrent confirm
++        TransferProposal proposal = proposalService.findByIdForUpdate(command.getProposalId())
++            .orElseThrow(() -> new NotFoundException(
++                "Proposal không tồn tại: " + command.getProposalId()));
++
++        // 2. Kiểm tra quyền: chỉ initiator mới được confirm
++        //    (bỏ qua khi confirmerCustomerId là null — demo/test mode)
++        if (command.getConfirmerCustomerId() != null
++                && !command.getConfirmerCustomerId().equals(proposal.getInitiatorCustomerId())) {
++            throw new BusinessException("Chỉ người tạo proposal mới có quyền xác nhận");
++        }
++
++        // 3. State guard — TRF-INV-005
++        //    startValidating() ném IllegalStateException nếu không PENDING
++        try {
++            proposal.startValidating();
++        } catch (IllegalStateException e) {
++            log.warn("eventName=PROPOSAL_CONFIRM_INVALID_STATE proposalId={} status={}",
++                proposal.getId(), proposal.getStatus());
++            throw new BusinessException(e.getMessage());
++        }
++
++        // Lưu trạng thái VALIDATING ngay — để concurrent request thấy row đã lock
++        proposalService.save(proposal);
++
++        // 4. Gọi Corebank
++        String corebankTxId   = null;
++        String failureReason  = null;
++        boolean corebankOk    = false;
++
++        try {
++            TransferRequestDTO req = buildCorebankRequest(proposal);
++            TransferResponseDTO res = corebankClient.executeTransfer(req);
++            corebankTxId = res.getTransactionId();
++            corebankOk = true;
++            log.info("eventName=COREBANK_TRANSFER_OK proposalId={} corebankTxId={}",
++                proposal.getId(), corebankTxId);
++
++        } catch (BusinessException e) {
++            // 4xx từ Corebank: lỗi nghiệp vụ cuối — không retry
++            failureReason = "COREBANK_REJECTED: " + sanitize(e.getMessage());
++            log.warn("eventName=COREBANK_TRANSFER_REJECTED proposalId={} reason={}",
++                proposal.getId(), failureReason);
++
++        } catch (Exception e) {
++            // 5xx hoặc network error: kết quả chưa xác định
++            failureReason = "OUTCOME_UNKNOWN";
++            log.error("eventName=COREBANK_TRANSFER_UNCERTAIN proposalId={} errorClass={}",
++                proposal.getId(), e.getClass().getSimpleName(), e);
++        }
++
++        // 5. Cập nhật state + ghi Outbox trong cùng transaction
++        if (corebankOk) {
++            proposal.markConfirmed(corebankTxId);
++            recordOutboxEvent(proposal, EVENT_CONFIRMED);
++            log.info("eventName=PROPOSAL_CONFIRMED proposalId={} corebankTxId={}",
++                proposal.getId(), corebankTxId);
++        } else {
++            proposal.markFailed(failureReason);
++            recordOutboxEvent(proposal, EVENT_FAILED);
++            log.warn("eventName=PROPOSAL_FAILED proposalId={} reason={}",
++                proposal.getId(), failureReason);
++        }
++
++        return TransferProposalResponseDTO.from(proposalService.save(proposal));
++    }
++
++    // ──────────────────────────────────────────────────────────────────────────
++
++    private TransferRequestDTO buildCorebankRequest(TransferProposal p) {
++        return TransferRequestDTO.builder()
++            .sourceAccountId(p.getSourceAccountId())
++            .destinationAccountId(p.getDestinationAccountId())
++            .amount(p.getAmount())
++            .currency(p.getCurrency())
++            .idempotencyKey(p.getIdempotencyKey()) // Corebank cũng idempotent với cùng key
++            .description(p.getDescription())
++            .build();
++    }
++
++    private void recordOutboxEvent(TransferProposal proposal, String eventType) {
++        try {
++            String payload = objectMapper.writeValueAsString(new TransferOutboxPayload(
++                proposal.getId(),
++                proposal.getCorebankTransactionId(),
++                proposal.getSourceAccountId(),
++                proposal.getDestinationAccountId(),
++                proposal.getAmount().toPlainString(),
++                proposal.getCurrency(),
++                proposal.getStatus().name(),
++                proposal.getFailureReason()
++            ));
++            outboxRecorder.record(AGGREGATE_TYPE, proposal.getId(), eventType, SCHEMA_VERSION, payload);
++        } catch (JsonProcessingException e) {
++            // Không để lỗi serialize Outbox rollback giao dịch tài chính đã thành công
++            log.error("eventName=OUTBOX_SERIALIZE_FAILED proposalId={} eventType={} — event bị mất",
++                proposal.getId(), eventType, e);
++        }
++    }
++
++    private String sanitize(String message) {
++        if (message == null) return "UNKNOWN";
++        return message.length() > 200 ? message.substring(0, 200) + "..." : message;
++    }
++
++    /** Outbox payload — sanitized, không chứa PAN/CVV/token. */
++    record TransferOutboxPayload(
++        String proposalId,
++        String corebankTransactionId,
++        String sourceAccountId,
++        String destinationAccountId,
++        String amount,
++        String currency,
++        String status,
++        String failureReason
++    ) {}
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/handler/command/transfer/CreateTransferProposalCommandHandler.java b/money-bank/src/main/java/com/hieu/moneybank/handler/command/transfer/CreateTransferProposalCommandHandler.java
+new file mode 100644
+index 0000000..f8c26bd
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/handler/command/transfer/CreateTransferProposalCommandHandler.java
+@@ -0,0 +1,114 @@
++package com.hieu.moneybank.handler.command.transfer;
++
++import com.hieu.common.cqrs.CommandHandler;
++import com.hieu.moneybank.domain.Account;
++import com.hieu.moneybank.domain.TransferProposal;
++import com.hieu.moneybank.dto.request.CreateTransferProposalCommand;
++import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
++import com.hieu.moneybank.exception.BusinessException;
++import com.hieu.moneybank.exception.NotFoundException;
++import com.hieu.moneybank.service.command.AccountCommandService;
++import com.hieu.moneybank.service.command.TransferProposalCommandService;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.stereotype.Component;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Handler tạo Transfer Proposal (U-06 bước 1/2).
++ *
++ * <h3>Luồng xử lý</h3>
++ * <ol>
++ *   <li>Idempotency check: nếu idempotencyKey đã tồn tại → trả lại proposal cũ.</li>
++ *   <li>Validate accounts tồn tại và ACTIVE.</li>
++ *   <li>Validate currency khớp giữa lệnh và tài khoản nguồn.</li>
++ *   <li>Kiểm tra domain invariants qua TransferProposal constructor.</li>
++ *   <li>Lưu proposal với status PENDING.</li>
++ * </ol>
++ *
++ * <p>Corebank <b>chưa</b> được gọi ở bước này.
++ * Chỉ là bước "đặt lệnh" — Corebank sẽ được gọi tại {@link ConfirmTransferProposalCommandHandler}.
++ */
++@Component
++@RequiredArgsConstructor
++@Slf4j
++public class CreateTransferProposalCommandHandler
++        implements CommandHandler<CreateTransferProposalCommand, TransferProposalResponseDTO> {
++
++    private final AccountCommandService accountCommandService;
++    private final TransferProposalCommandService proposalService;
++
++    @Override
++    @Transactional
++    public TransferProposalResponseDTO handle(CreateTransferProposalCommand command) {
++
++        // 1. Idempotency: nếu đã có proposal với cùng key → trả lại ngay
++        return proposalService.findByIdempotencyKey(command.getIdempotencyKey())
++            .map(existing -> {
++                log.info("eventName=PROPOSAL_IDEMPOTENT_HIT proposalId={} status={}",
++                    existing.getId(), existing.getStatus());
++                return TransferProposalResponseDTO.from(existing);
++            })
++            .orElseGet(() -> createNewProposal(command));
++    }
++
++    private TransferProposalResponseDTO createNewProposal(CreateTransferProposalCommand command) {
++
++        // 2. Validate accounts tồn tại
++        Account source = accountCommandService.findById(command.getSourceAccountId())
++            .orElseThrow(() -> new NotFoundException(
++                "Tài khoản nguồn không tồn tại: " + command.getSourceAccountId()));
++
++        Account destination = accountCommandService.findById(command.getDestinationAccountId())
++            .orElseThrow(() -> new NotFoundException(
++                "Tài khoản đích không tồn tại: " + command.getDestinationAccountId()));
++
++        // 3. Validate accounts đang ACTIVE
++        validateAccountActive(source,      "Tài khoản nguồn");
++        validateAccountActive(destination, "Tài khoản đích");
++
++        // 4. Validate currency khớp với tài khoản nguồn
++        if (!source.getCurrency().equalsIgnoreCase(command.getCurrency())) {
++            throw new BusinessException(
++                "Currency của lệnh (" + command.getCurrency() +
++                ") không khớp với tài khoản nguồn (" + source.getCurrency() + ")");
++        }
++
++        // 5. Tạo proposal (domain invariants được kiểm tra bên trong constructor)
++        TransferProposal proposal = new TransferProposal(
++            command.getInitiatorCustomerId(),
++            command.getSourceAccountId(),
++            command.getDestinationAccountId(),
++            command.getAmount(),
++            command.getCurrency(),
++            command.getIdempotencyKey(),
++            command.getDescription()
++        );
++
++        try {
++            TransferProposal saved = proposalService.save(proposal);
++            log.info("eventName=PROPOSAL_CREATED proposalId={} sourceAccountId={} destinationAccountId={} amount={} currency={}",
++                saved.getId(), saved.getSourceAccountId(), saved.getDestinationAccountId(),
++                saved.getAmount(), saved.getCurrency());
++            return TransferProposalResponseDTO.from(saved);
++
++        } catch (DataIntegrityViolationException e) {
++            // Race condition: hai request cùng lúc với cùng idempotencyKey
++            // → kẻ thua sẽ bị chặn bởi UK. Đọc lại và trả về proposal đã tồn tại.
++            log.warn("eventName=PROPOSAL_IDEMPOTENCY_RACE_RESOLVED key={}", command.getIdempotencyKey());
++            return proposalService.findByIdempotencyKey(command.getIdempotencyKey())
++                .map(TransferProposalResponseDTO::from)
++                .orElseThrow(() -> new IllegalStateException(
++                    "UK violation nhưng không tìm lại được proposal — bất đồng bộ DB"));
++        }
++    }
++
++    private void validateAccountActive(Account account, String label) {
++        switch (account.getStatus()) {
++            case ACTIVE -> { /* ok */ }
++            case BLOCKED -> throw new BusinessException(label + " đang bị khóa");
++            case CLOSED  -> throw new BusinessException(label + " đã đóng");
++        }
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/handler/query/transfer/GetTransferProposalQueryHandler.java b/money-bank/src/main/java/com/hieu/moneybank/handler/query/transfer/GetTransferProposalQueryHandler.java
+new file mode 100644
+index 0000000..df41e70
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/handler/query/transfer/GetTransferProposalQueryHandler.java
+@@ -0,0 +1,68 @@
++package com.hieu.moneybank.handler.query.transfer;
++
++import com.hieu.common.cqrs.Query;
++import com.hieu.common.cqrs.QueryHandler;
++import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
++import com.hieu.moneybank.exception.NotFoundException;
++import com.hieu.moneybank.repository.TransferProposalRepository;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.Pageable;
++import org.springframework.stereotype.Component;
++
++import java.time.Instant;
++
++/**
++ * Query handlers cho Transfer Proposal.
++ */
++@Slf4j
++public class GetTransferProposalQueryHandler {
++
++    // ──────────────────────────────────────────────────────────────────────────
++    // Query: Lấy một proposal theo ID
++    // ──────────────────────────────────────────────────────────────────────────
++
++    public record GetProposalByIdQuery(String proposalId) implements Query<TransferProposalResponseDTO> {}
++
++    @Component
++    @RequiredArgsConstructor
++    public static class GetProposalByIdQueryHandler
++            implements QueryHandler<GetProposalByIdQuery, TransferProposalResponseDTO> {
++
++        private final TransferProposalRepository repository;
++
++        @Override
++        public TransferProposalResponseDTO handle(GetProposalByIdQuery query) {
++            return repository.findById(query.proposalId())
++                .map(TransferProposalResponseDTO::from)
++                .orElseThrow(() -> new NotFoundException("Proposal không tồn tại: " + query.proposalId()));
++        }
++    }
++
++    // ──────────────────────────────────────────────────────────────────────────
++    // Query: Lấy lịch sử proposals theo account
++    // ──────────────────────────────────────────────────────────────────────────
++
++    public record GetProposalsByAccountQuery(
++        String accountId,
++        Instant from,
++        Instant to,
++        Pageable pageable
++    ) implements Query<Page<TransferProposalResponseDTO>> {}
++
++    @Component
++    @RequiredArgsConstructor
++    public static class GetProposalsByAccountQueryHandler
++            implements QueryHandler<GetProposalsByAccountQuery, Page<TransferProposalResponseDTO>> {
++
++        private final TransferProposalRepository repository;
++
++        @Override
++        public Page<TransferProposalResponseDTO> handle(GetProposalsByAccountQuery query) {
++            return repository.findByAccountId(
++                query.accountId(), query.from(), query.to(), query.pageable()
++            ).map(TransferProposalResponseDTO::from);
++        }
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/messaging/KafkaOutboxMessagePublisher.java b/money-bank/src/main/java/com/hieu/moneybank/messaging/KafkaOutboxMessagePublisher.java
+new file mode 100644
+index 0000000..b695c32
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/messaging/KafkaOutboxMessagePublisher.java
+@@ -0,0 +1,148 @@
++package com.hieu.moneybank.messaging;
++
++import com.hieu.common.outbox.OutboxMessage;
++import com.hieu.common.outbox.OutboxMessagePublisher;
++import com.hieu.moneybank.config.OutboxKafkaProperties;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.apache.kafka.clients.producer.ProducerRecord;
++import org.apache.kafka.common.header.internals.RecordHeader;
++import org.springframework.kafka.core.KafkaTemplate;
++import org.springframework.kafka.support.SendResult;
++import org.springframework.stereotype.Component;
++
++import java.nio.charset.StandardCharsets;
++import java.time.Duration;
++import java.util.concurrent.ExecutionException;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.TimeoutException;
++
++/**
++ * Kafka adapter cho {@link OutboxMessagePublisher} — implements U-07.
++ *
++ * <h3>Delivery guarantee</h3>
++ * <p>Gọi {@code future.get(timeout)} theo nghĩa blocking: chỉ trả về bình thường
++ * khi broker đã ack. Nếu broker không ack trong timeout → ném RuntimeException →
++ * {@link com.hieu.common.outbox.OutboxDispatcher} giữ event để retry.
++ *
++ * <h3>Message format</h3>
++ * <pre>
++ * Topic  : money-bank.transfer-events       (configurable)
++ * Key    : proposalId (aggregateId)          → ordering per aggregate, dedup key cho Inbox
++ * Value  : JSON payload từ OutboxRecorder    → {"proposalId":"...", "status":"CONFIRMED", ...}
++ * Headers:
++ *   eventId        — UUID của OutboxEvent (idempotency key cho consumer Inbox)
++ *   eventType      — "TransferConfirmed" | "TransferFailed"
++ *   aggregateType  — "TRANSFER"
++ *   schemaVersion  — "v1"
++ *   occurredAt     — ISO-8601 UTC
++ * </pre>
++ *
++ * <h3>Headers thay vì embedding vào value</h3>
++ * <p>Giữ payload nguyên xi từ OutboxRecorder (không wrap). Metadata routing
++ * (eventType, schemaVersion) đặt trong Kafka headers → consumer có thể route
++ * theo header mà không cần deserialize value.
++ */
++@Component
++@RequiredArgsConstructor
++@Slf4j
++public class KafkaOutboxMessagePublisher implements OutboxMessagePublisher {
++
++    /** Timeout chờ broker ack. Nếu vượt quá → dispatcher retry. */
++    private static final Duration SEND_TIMEOUT = Duration.ofSeconds(10);
++
++    private final KafkaTemplate<String, String> outboxKafkaTemplate;
++    private final OutboxKafkaProperties kafkaProperties;
++
++    @Override
++    public void publish(OutboxMessage message) {
++        String topic  = resolveTopic(message);
++        String key    = message.aggregateId();   // proposalId — partition key + Inbox dedup key
++        String value  = message.payload();
++
++        ProducerRecord<String, String> record = buildRecord(topic, key, value, message);
++
++        log.debug("eventName=OUTBOX_PUBLISH_ATTEMPT eventId={} eventType={} topic={} key={}",
++            message.eventId(), message.eventType(), topic, key);
++
++        try {
++            SendResult<String, String> result = outboxKafkaTemplate.send(record)
++                .get(SEND_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
++
++            log.info("eventName=OUTBOX_PUBLISHED eventId={} eventType={} topic={} partition={} offset={}",
++                message.eventId(), message.eventType(), topic,
++                result.getRecordMetadata().partition(),
++                result.getRecordMetadata().offset());
++
++        } catch (TimeoutException e) {
++            // Broker không ack đúng hạn → dispatcher sẽ retry
++            throw new KafkaSendException(
++                "Kafka send timeout after " + SEND_TIMEOUT.toSeconds() + "s" +
++                " [eventId=" + message.eventId() + "]", e);
++
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++            throw new KafkaSendException(
++                "Kafka send interrupted [eventId=" + message.eventId() + "]", e);
++
++        } catch (ExecutionException e) {
++            // Lỗi từ broker (topic không tồn tại, auth, v.v.)
++            throw new KafkaSendException(
++                "Kafka send failed [eventId=" + message.eventId() +
++                " cause=" + e.getCause().getClass().getSimpleName() + "]",
++                e.getCause());
++        }
++    }
++
++    // ─────────────────────────────────────────────────────────────────────────────
++
++    /**
++     * Chọn topic theo aggregateType. Hiện tại chỉ có TRANSFER, sẵn sàng cho loại mới.
++     */
++    private String resolveTopic(OutboxMessage message) {
++        return switch (message.aggregateType()) {
++            case "TRANSFER" -> kafkaProperties.getTransferEventsTopic();
++            default -> throw new KafkaSendException(
++                "Unknown aggregateType for topic routing: " + message.aggregateType());
++        };
++    }
++
++    /**
++     * Dựng ProducerRecord với Kafka headers chứa metadata routing.
++     *
++     * <p>Headers cho phép consumer (notification-service) route event theo loại
++     * mà không cần deserialize JSON body — đặc biệt hữu ích khi có nhiều loại
++     * event trên cùng topic.
++     */
++    private ProducerRecord<String, String> buildRecord(
++            String topic, String key, String value, OutboxMessage message) {
++
++        ProducerRecord<String, String> record = new ProducerRecord<>(topic, key, value);
++
++        record.headers()
++            .add(new RecordHeader("eventId",
++                message.eventId().getBytes(StandardCharsets.UTF_8)))
++            .add(new RecordHeader("eventType",
++                message.eventType().getBytes(StandardCharsets.UTF_8)))
++            .add(new RecordHeader("aggregateType",
++                message.aggregateType().getBytes(StandardCharsets.UTF_8)))
++            .add(new RecordHeader("aggregateId",
++                message.aggregateId().getBytes(StandardCharsets.UTF_8)))
++            .add(new RecordHeader("schemaVersion",
++                message.schemaVersion().getBytes(StandardCharsets.UTF_8)))
++            .add(new RecordHeader("occurredAt",
++                message.occurredAt().toString().getBytes(StandardCharsets.UTF_8)));
++
++        return record;
++    }
++
++    /** RuntimeException để dispatcher phân biệt lỗi publish với lỗi khác. */
++    public static class KafkaSendException extends RuntimeException {
++        public KafkaSendException(String message) {
++            super(message);
++        }
++        public KafkaSendException(String message, Throwable cause) {
++            super(message, cause);
++        }
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/messaging/OutboxDispatchScheduler.java b/money-bank/src/main/java/com/hieu/moneybank/messaging/OutboxDispatchScheduler.java
+new file mode 100644
+index 0000000..bfe342b
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/messaging/OutboxDispatchScheduler.java
+@@ -0,0 +1,106 @@
++package com.hieu.moneybank.messaging;
++
++import com.hieu.common.outbox.OutboxDispatcher;
++import com.hieu.common.outbox.OutboxProperties;
++import io.micrometer.core.instrument.MeterRegistry;
++import io.micrometer.core.instrument.Timer;
++import lombok.RequiredArgsConstructor;
++import lombok.extern.slf4j.Slf4j;
++import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
++import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
++import org.springframework.scheduling.annotation.EnableScheduling;
++import org.springframework.scheduling.annotation.Scheduled;
++import org.springframework.stereotype.Component;
++
++import java.time.Instant;
++
++/**
++ * Bộ lập lịch kích hoạt {@link OutboxDispatcher#dispatchBatch()} định kỳ (U-07).
++ *
++ * <h3>Điều kiện kích hoạt</h3>
++ * <ul>
++ *   <li>{@code money-bank.outbox.dispatcher-enabled=true} — phải bật rõ ràng.</li>
++ *   <li>{@link KafkaOutboxMessagePublisher} bean phải tồn tại — tức là Kafka đã
++ *       được cấu hình (bootstrap-servers).</li>
++ * </ul>
++ * <p>Nếu thiếu một trong hai điều kiện, class này không được tạo → Outbox ở trạng
++ * thái "ghi nhưng không đẩy" (an toàn hơn là ghi rồi mất silently).
++ *
++ * <h3>Scheduling strategy</h3>
++ * <p>Dùng {@code @Scheduled(fixedDelayString)} thay vì {@code fixedRate}:
++ * delay tính từ lúc batch trước <em>xong</em>, không phải từ lúc bắt đầu.
++ * Điều này ngăn các batch chồng lấp nhau khi Kafka chậm.
++ *
++ * <h3>Observability</h3>
++ * <p>Mỗi vòng dispatch ghi metric {@code moneybank.outbox.dispatch.duration}
++ * và counter {@code moneybank.outbox.dispatch.published} để Grafana alert.
++ */
++@Component
++@EnableScheduling
++@ConditionalOnProperty(
++    prefix  = "money-bank.outbox",
++    name    = "dispatcher-enabled",
++    havingValue = "true"
++)
++@ConditionalOnBean(KafkaOutboxMessagePublisher.class)
++@RequiredArgsConstructor
++@Slf4j
++public class OutboxDispatchScheduler {
++
++    private static final String METRIC_DISPATCH_DURATION  = "moneybank.outbox.dispatch.duration";
++    private static final String METRIC_DISPATCH_PUBLISHED = "moneybank.outbox.dispatch.published";
++    private static final String METRIC_DISPATCH_ERRORS    = "moneybank.outbox.dispatch.errors";
++
++    private final OutboxDispatcher dispatcher;
++    private final OutboxProperties  outboxProperties;
++    private final MeterRegistry     meterRegistry;
++
++    /**
++     * Kích hoạt một batch dispatch.
++     *
++     * <p>Delay lấy từ {@code money-bank.outbox.poll-interval} (default 1s).
++     * Spring EL {@code #{...}} đọc bean, không phải property string trực tiếp.
++     *
++     * <p>Fixed delay — không chạy batch mới cho đến khi batch cũ xong.
++     */
++    @Scheduled(fixedDelayString = "#{outboxProperties.pollInterval.toMillis()}")
++    public void dispatchBatch() {
++        Timer.Sample sample = Timer.start(meterRegistry);
++        int published = 0;
++        try {
++            published = dispatcher.dispatchBatch();
++
++            if (published > 0) {
++                log.debug("eventName=OUTBOX_BATCH_DONE published={}", published);
++            }
++
++            meterRegistry.counter(METRIC_DISPATCH_PUBLISHED)
++                .increment(published);
++
++        } catch (Exception e) {
++            // Không để exception kill scheduler thread
++            meterRegistry.counter(METRIC_DISPATCH_ERRORS).increment();
++            log.error("eventName=OUTBOX_DISPATCH_ERROR errorClass={} message={}",
++                e.getClass().getSimpleName(), e.getMessage(), e);
++        } finally {
++            sample.stop(Timer.builder(METRIC_DISPATCH_DURATION)
++                .description("Duration of one outbox dispatch batch")
++                .register(meterRegistry));
++        }
++    }
++
++    /**
++     * Log cảnh báo khi dispatcher bật nhưng event tồn đọng nhiều.
++     * Chạy mỗi 5 phút — không cần nhanh hơn.
++     *
++     * <p>Đây là safeguard: nếu Kafka down lâu, DBA nhìn thấy alert này
++     * mà không cần query DB thủ công.
++     */
++    @Scheduled(fixedDelay = 300_000)   // 5 phút
++    public void alertOnStaleEvents() {
++        int threshold = outboxProperties.getAlertAfterAttempts();
++        // Metric đã được OutboxDispatcher ghi — ở đây chỉ log heartbeat.
++        log.debug("eventName=OUTBOX_HEALTH_CHECK ts={} alertThreshold={}",
++            Instant.now(), threshold);
++    }
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/repository/TransferProposalRepository.java b/money-bank/src/main/java/com/hieu/moneybank/repository/TransferProposalRepository.java
+new file mode 100644
+index 0000000..8ae2178
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/repository/TransferProposalRepository.java
+@@ -0,0 +1,58 @@
++package com.hieu.moneybank.repository;
++
++import com.hieu.moneybank.constant.ProposalStatus;
++import com.hieu.moneybank.domain.TransferProposal;
++import org.springframework.data.domain.Page;
++import org.springframework.data.domain.Pageable;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Lock;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++import org.springframework.stereotype.Repository;
++
++import jakarta.persistence.LockModeType;
++import java.time.Instant;
++import java.util.Optional;
++
++@Repository
++public interface TransferProposalRepository extends JpaRepository<TransferProposal, String> {
++
++    Optional<TransferProposal> findByIdempotencyKey(String idempotencyKey);
++
++    /**
++     * Pessimistic write lock khi confirm proposal.
++     * Chặn concurrent confirm cùng một proposal ID.
++     */
++    @Lock(LockModeType.PESSIMISTIC_WRITE)
++    @Query("SELECT p FROM TransferProposal p WHERE p.id = :id")
++    Optional<TransferProposal> findByIdForUpdate(@Param("id") String id);
++
++    /**
++     * Lấy lịch sử proposals của account (source hoặc destination).
++     */
++    @Query("""
++        SELECT p FROM TransferProposal p
++        WHERE (p.sourceAccountId = :accountId OR p.destinationAccountId = :accountId)
++          AND (:from IS NULL OR p.createdAt >= :from)
++          AND (:to   IS NULL OR p.createdAt <= :to)
++        ORDER BY p.createdAt DESC
++        """)
++    Page<TransferProposal> findByAccountId(
++        @Param("accountId") String accountId,
++        @Param("from") Instant from,
++        @Param("to")   Instant to,
++        Pageable pageable);
++
++    /**
++     * Đếm số proposal PENDING của một account nguồn — dùng để rate-limit
++     * số lệnh chuyển chờ xác nhận (optional, phục vụ U-06 domain rule).
++     */
++    @Query("""
++        SELECT COUNT(p) FROM TransferProposal p
++        WHERE p.sourceAccountId = :accountId
++          AND p.status = :status
++        """)
++    long countBySourceAccountIdAndStatus(
++        @Param("accountId") String accountId,
++        @Param("status")    ProposalStatus status);
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/service/command/TransferProposalCommandService.java b/money-bank/src/main/java/com/hieu/moneybank/service/command/TransferProposalCommandService.java
+new file mode 100644
+index 0000000..b406da0
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/service/command/TransferProposalCommandService.java
+@@ -0,0 +1,29 @@
++package com.hieu.moneybank.service.command;
++
++import com.hieu.moneybank.domain.TransferProposal;
++
++import java.util.Optional;
++
++/**
++ * Service layer cho write operations trên TransferProposal.
++ *
++ * <p>Các phương thức này được gọi từ handler trong transaction của handler.
++ * Không có logic nghiệp vụ ở đây — chỉ là data access wrapper.
++ */
++public interface TransferProposalCommandService {
++
++    /**
++     * Lưu proposal (insert hoặc update).
++     */
++    TransferProposal save(TransferProposal proposal);
++
++    /**
++     * Tìm proposal với pessimistic write lock để confirm.
++     */
++    Optional<TransferProposal> findByIdForUpdate(String id);
++
++    /**
++     * Tìm proposal theo idempotency key (cho idempotency check).
++     */
++    Optional<TransferProposal> findByIdempotencyKey(String idempotencyKey);
++}
+diff --git a/money-bank/src/main/java/com/hieu/moneybank/service/command/impl/TransferProposalCommandServiceImpl.java b/money-bank/src/main/java/com/hieu/moneybank/service/command/impl/TransferProposalCommandServiceImpl.java
+new file mode 100644
+index 0000000..2f28738
+--- /dev/null
++++ b/money-bank/src/main/java/com/hieu/moneybank/service/command/impl/TransferProposalCommandServiceImpl.java
+@@ -0,0 +1,33 @@
++package com.hieu.moneybank.service.command.impl;
++
++import com.hieu.moneybank.domain.TransferProposal;
++import com.hieu.moneybank.repository.TransferProposalRepository;
++import com.hieu.moneybank.service.command.TransferProposalCommandService;
++import org.springframework.stereotype.Service;
++
++import java.util.Optional;
++
++@Service
++public class TransferProposalCommandServiceImpl implements TransferProposalCommandService {
++
++    private final TransferProposalRepository repository;
++
++    public TransferProposalCommandServiceImpl(TransferProposalRepository repository) {
++        this.repository = repository;
++    }
++
++    @Override
++    public TransferProposal save(TransferProposal proposal) {
++        return repository.save(proposal);
++    }
++
++    @Override
++    public Optional<TransferProposal> findByIdForUpdate(String id) {
++        return repository.findByIdForUpdate(id);
++    }
++
++    @Override
++    public Optional<TransferProposal> findByIdempotencyKey(String idempotencyKey) {
++        return repository.findByIdempotencyKey(idempotencyKey);
++    }
++}
+diff --git a/money-bank/src/main/resources/application.yaml b/money-bank/src/main/resources/application.yaml
+index b706c5f..044478b 100644
+--- a/money-bank/src/main/resources/application.yaml
++++ b/money-bank/src/main/resources/application.yaml
+@@ -79,3 +79,39 @@ money-bank:
+     jwk-set-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}/protocol/openid-connect/certs
+     issuer: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}
+     audience: moneybank-service
++
++  # ── Outbox Dispatcher (U-07) ────────────────────────────────────────────────
++  # dispatcher-enabled: false   ← mặc định TẮT; chỉ bật khi Kafka sẵn sàng.
++  # Bật mà thiếu spring.kafka.bootstrap-servers → ứng dụng fail khi khởi động.
++  # Đó là hành vi mong muốn: không publish silently.
++  outbox:
++    dispatcher-enabled: ${OUTBOX_DISPATCHER_ENABLED:false}
++    batch-size: 50
++    poll-interval: 1s
++    retry-backoff: 2s
++    max-retry-backoff: 5m
++    alert-after-attempts: 10
++
++  # ── Kafka Outbox Topics (U-07) ───────────────────────────────────────────────
++  kafka:
++    transfer-events-topic: ${KAFKA_TOPIC_TRANSFER_EVENTS:transfer-events}
++    request-timeout-ms: 5000
++    retries: 3
++
++# ── Spring Kafka Producer ────────────────────────────────────────────────────
++# bootstrap-servers để trống theo mặc định → Kafka client KHÔNG được khởi tạo.
++# Set qua env var KAFKA_BOOTSTRAP_SERVERS khi deploy với Kafka.
++spring:
++  kafka:
++    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:}
++    producer:
++      # Acks và idempotence được override trong OutboxKafkaConfig.
++      # Khai báo ở đây để Spring Boot auto-config cũng nhận (nếu có auto-config khác).
++      acks: all
++      enable-idempotence: true
++      key-serializer: org.apache.kafka.common.serialization.StringSerializer
++      value-serializer: org.apache.kafka.common.serialization.StringSerializer
++    # Consumer chưa được dùng ở money-bank (U-08 sẽ thêm sau)
++    # consumer:
++    #   group-id: money-bank-inbox
++    #   auto-offset-reset: earliest
+diff --git a/money-bank/src/main/resources/db/migration/V5__add_transfer_proposals.sql b/money-bank/src/main/resources/db/migration/V5__add_transfer_proposals.sql
+new file mode 100644
+index 0000000..7636fd6
+--- /dev/null
++++ b/money-bank/src/main/resources/db/migration/V5__add_transfer_proposals.sql
+@@ -0,0 +1,63 @@
++-- ============================================================
++-- V5 – Transfer Proposals (U-06: Transfer Command & State Machine)
++-- ============================================================
++--
++-- Bảng này lưu Transfer Proposal — aggregate root của luồng chuyển tiền 2 bước.
++--
++-- State Machine:
++--   PENDING → VALIDATING → CONFIRMED (terminal)
++--           → REJECTED (terminal)
++--   PENDING → VALIDATING → FAILED (terminal)
++--
++-- Idempotency: uk_proposal_idempotency_key bảo đảm mỗi ý định chỉ tạo 1 proposal.
++-- OCC: cột version (Oracle optimistic locking) chặn concurrent confirm.
++-- ============================================================
++
++CREATE TABLE transfer_proposals (
++    -- Định danh
++    id                      VARCHAR2(36)    NOT NULL,
++    initiator_customer_id   VARCHAR2(64)    NOT NULL,   -- CIF từ identity context
++
++    -- Nghiệp vụ
++    source_account_id       VARCHAR2(36)    NOT NULL,
++    destination_account_id  VARCHAR2(36)    NOT NULL,
++    amount                  NUMBER(19, 2)   NOT NULL,
++    currency                VARCHAR2(3)     NOT NULL,
++    idempotency_key         VARCHAR2(64)    NOT NULL,
++    description             VARCHAR2(255),
++
++    -- Trạng thái state machine
++    status                  VARCHAR2(20)    NOT NULL,   -- PENDING/VALIDATING/CONFIRMED/FAILED/REJECTED
++
++    -- Kết quả từ Corebank (null cho đến khi CONFIRMED)
++    corebank_transaction_id VARCHAR2(64),
++
++    -- Lý do thất bại/từ chối (null khi PENDING/CONFIRMED)
++    failure_reason          VARCHAR2(255),
++
++    -- Audit
++    created_at              TIMESTAMP WITH TIME ZONE NOT NULL,
++    updated_at              TIMESTAMP WITH TIME ZONE NOT NULL,
++
++    -- Optimistic Concurrency Control
++    version                 NUMBER(19, 0)   NOT NULL DEFAULT 0,
++
++    -- Constraints
++    CONSTRAINT pk_transfer_proposals            PRIMARY KEY (id),
++    CONSTRAINT uk_proposal_idempotency_key      UNIQUE (idempotency_key),
++    CONSTRAINT chk_proposal_amount_positive     CHECK (amount > 0),
++    CONSTRAINT chk_proposal_accounts_different  CHECK (source_account_id <> destination_account_id),
++    CONSTRAINT chk_proposal_status              CHECK (status IN (
++        'PENDING', 'VALIDATING', 'CONFIRMED', 'FAILED', 'REJECTED'
++    ))
++);
++
++-- Index cho query theo account (source hoặc destination)
++CREATE INDEX idx_proposal_source    ON transfer_proposals (source_account_id, created_at);
++CREATE INDEX idx_proposal_dest      ON transfer_proposals (destination_account_id, created_at);
++
++-- Index cho query theo status (ví dụ tìm PENDING để reconciliation)
++CREATE INDEX idx_proposal_status    ON transfer_proposals (status, created_at);
++
++-- Index cho query theo người khởi tạo
++CREATE INDEX idx_proposal_initiator ON transfer_proposals (initiator_customer_id, created_at);

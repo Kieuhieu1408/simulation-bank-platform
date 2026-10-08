@@ -26,6 +26,19 @@ services:
 
   # ── Infrastructure ──────────────────────────────────────────
 
+  vault:
+    image: hashicorp/vault:1.17
+    container_name: sim-bank-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: sim-bank-root-token
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    ports:
+      - "8200:8200"
+    networks:
+      - sim-bank-net
+
   keycloak:
     image: quay.io/keycloak/keycloak:25.0
     container_name: sim-bank-keycloak
@@ -37,7 +50,7 @@ services:
     ports:
       - "8090:8080"       # host:8090 → keycloak container:8080
     volumes:
-      - ./docs/keycloak:/opt/keycloak/data/import   # realm export để auto-import
+      - ./config/keycloak:/opt/keycloak/data/import   # realm export để auto-import
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
       interval: 15s
@@ -101,6 +114,30 @@ services:
 
   # ── Observability ───────────────────────────────────────────
 
+  loki:
+    image: grafana/loki:latest
+    container_name: sim-bank-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - sim-bank-net
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: sim-bank-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    depends_on:
+      - jaeger
+      - loki
+    networks:
+      - sim-bank-net
+
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: sim-bank-jaeger
@@ -108,8 +145,6 @@ services:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
       - "16686:16686" # UI
-      - "4318:4318"   # OTLP HTTP
-      - "4317:4317"   # OTLP gRPC
     networks:
       - sim-bank-net
 
@@ -117,7 +152,7 @@ services:
     image: prom/prometheus:latest
     container_name: sim-bank-prometheus
     volumes:
-      - ./docs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
     networks:
@@ -130,6 +165,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     ports:
       - "3000:3000"
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
     networks:
@@ -153,7 +190,9 @@ services:
       DB_USERNAME: corebank
       DB_PASSWORD: corebank_demo
       KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/simulation-bank
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
     ports:
       - "8180:8180"       # host:8180 → corebank container:8180
     depends_on:
@@ -178,7 +217,9 @@ services:
       COREBANK_URL: http://corebank:8180
       OAUTH2_CLIENT_ID: moneybank-service
       OAUTH2_CLIENT_SECRET: moneybank-secret
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
     ports:
       - "8181:8181"       # host:8181 → money-bank container:8181
     depends_on:
@@ -205,15 +246,27 @@ services:
       CMS_BACKEND_URL: http://cms:8182
       PROFILE_SERVICE_URL: http://profile-service:8080
       NOTIFICATION_SERVICE_URL: http://notification-service:8080
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
-    ports:
-      - "8080:8080"       # host:8080 → api-gateway container:8080 (entry point)
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
     depends_on:
       keycloak:
         condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - sim-bank-net
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: sim-bank-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-gateway
     networks:
       - sim-bank-net
 

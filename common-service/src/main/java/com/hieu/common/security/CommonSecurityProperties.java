@@ -1,6 +1,8 @@
 package com.hieu.common.security;
 
 import jakarta.validation.constraints.NotBlank;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
@@ -46,6 +48,35 @@ public class CommonSecurityProperties {
 
     /** Dung sai lệch giờ khi kiểm tra {@code exp}/{@code nbf}, đơn vị giây. */
     private long clockSkewSeconds = 30;
+
+    /**
+     * Các path (Ant pattern) được mở công khai, không cần token — ví dụ endpoint
+     * đăng nhập. Mặc định rỗng để giữ nguyên deny-by-default ({@code SEC-002}).
+     */
+    private List<String> publicPaths = new ArrayList<>();
+
+    /**
+     * Các path (Ant pattern) yêu cầu token hợp lệ. Mặc định rỗng: service nào cần
+     * mở API cho người dùng phải khai báo tường minh trong yaml. Ownership vẫn do
+     * application service kiểm tra ({@code AD-SEC-A05}).
+     */
+    private List<String> authenticatedPaths = new ArrayList<>();
+
+    public List<String> getPublicPaths() {
+        return publicPaths;
+    }
+
+    public void setPublicPaths(List<String> publicPaths) {
+        this.publicPaths = publicPaths == null ? new ArrayList<>() : new ArrayList<>(publicPaths);
+    }
+
+    public List<String> getAuthenticatedPaths() {
+        return authenticatedPaths;
+    }
+
+    public void setAuthenticatedPaths(List<String> authenticatedPaths) {
+        this.authenticatedPaths = authenticatedPaths == null ? new ArrayList<>() : new ArrayList<>(authenticatedPaths);
+    }
 
     public String getJwkSetUri() {
         return jwkSetUri;

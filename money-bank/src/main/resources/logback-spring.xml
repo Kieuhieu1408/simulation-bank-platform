@@ -2,7 +2,7 @@
 <configuration>
     <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="moneybank"/>
 
-    <!-- JSON appender cho production / container (Promtail → Loki) -->
+    <!-- JSON appender cho terminal -->
     <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
             <includeMdcKeyName>traceId</includeMdcKeyName>
@@ -18,31 +18,21 @@
         </encoder>
     </appender>
 
-    <!-- Gửi log trực tiếp đến Loki qua HTTP API -->
-    <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
-        <http>
-            <url>http://localhost:3100/loki/api/v1/push</url>
-        </http>
-        <format>
-            <label>
-                <pattern>service=${appName},env=local,host=${HOSTNAME}</pattern>
-            </label>
-            <message>
-                <pattern>{"traceId":"%X{traceId}", "spanId":"%X{spanId}", "level":"%level", "logger":"%logger{36}", "thread":"%thread", "message":"%message"}</pattern>
-            </message>
-            <sortByTime>true</sortByTime>
-        </format>
+    <!-- Appender xuất log sang OpenTelemetry (sẽ đẩy về OTel Collector) -->
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+        <captureExperimentalAttributes>true</captureExperimentalAttributes>
+        <captureKeyValuePairAttributes>true</captureKeyValuePairAttributes>
     </appender>
 
     <!-- Root logger -->
     <root level="INFO">
         <appender-ref ref="JSON_CONSOLE"/>
-        <!-- <appender-ref ref="LOKI"/> -->
+        <appender-ref ref="OTEL"/>
     </root>
 
     <logger name="com.hieu.moneybank" level="DEBUG" additivity="false">
         <appender-ref ref="JSON_CONSOLE"/>
-        <!-- <appender-ref ref="LOKI"/> -->
+        <appender-ref ref="OTEL"/>
     </logger>
 
     <!-- Giảm noise từ Hibernate SQL -->
@@ -52,6 +42,6 @@
     <!-- Enable DEBUG logs cho CommonsRequestLoggingFilter -->
     <logger name="org.springframework.web.filter.CommonsRequestLoggingFilter" level="DEBUG" additivity="false">
         <appender-ref ref="JSON_CONSOLE"/>
-        <!-- <appender-ref ref="LOKI"/> -->
+        <appender-ref ref="OTEL"/>
     </logger>
 </configuration>

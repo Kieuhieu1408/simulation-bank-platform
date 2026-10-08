@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cms
+  namespace: sim-bank
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cms
+  template:
+    metadata:
+      labels:
+        app: cms
+    spec:
+      containers:
+        - name: cms
+          image: harbor.sim-bank.local/sim-bank/cms:latest
+          ports:
+            - containerPort: 8182
+          envFrom:
+            - configMapRef:
+                name: sim-bank-common
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8182
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8182
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]

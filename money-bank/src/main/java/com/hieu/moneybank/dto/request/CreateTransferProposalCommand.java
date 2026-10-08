@@ -1,5 +1,6 @@
 package com.hieu.moneybank.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hieu.common.annotation.ValidCommand;
 import com.hieu.common.cqrs.Command;
 import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
@@ -17,8 +18,8 @@ import java.math.BigDecimal;
  * <p>Command này chỉ tạo proposal ở trạng thái PENDING.
  * Corebank chưa được gọi ở bước này.
  *
- * <p>idempotencyKey phải tuân thủ khuôn dạng [A-Za-z0-9_-]{16,64}
- * theo IdempotencyService.KEY_PATTERN.
+ * <p>Tạo proposal không idempotent: mỗi lần gọi tạo một proposal mới. Tính
+ * idempotent chỉ áp dụng khi chuyển tiền thật (bước confirm → Corebank).
  */
 @ValidCommand
 @Data
@@ -29,9 +30,10 @@ public class CreateTransferProposalCommand implements Command<TransferProposalRe
 
     /**
      * CIF của người khởi tạo.
-     * Được inject từ identity context tại handler — không đặt trong request body.
-     * Field này blank khi đến từ client; handler sẽ set trước khi dispatch.
+     * Luôn được controller set từ identity context (JWT); giá trị gửi trong request
+     * body bị bỏ qua ({@code READ_ONLY} khi deserialize).
      */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private String initiatorCustomerId;
 
     @NotBlank(message = "sourceAccountId không được để trống")
@@ -48,17 +50,6 @@ public class CreateTransferProposalCommand implements Command<TransferProposalRe
     @NotBlank(message = "currency không được để trống")
     @Pattern(regexp = "[A-Za-z]{3}", message = "currency phải là mã ISO-4217 3 ký tự")
     private String currency;
-
-    /**
-     * Key do client tạo — phải giữ nguyên khi retry.
-     * Khuôn dạng: [A-Za-z0-9_-]{16,64}.
-     */
-    @NotBlank(message = "idempotencyKey không được để trống")
-    @Pattern(
-        regexp = "[A-Za-z0-9_-]{16,64}",
-        message = "idempotencyKey phải có 16-64 ký tự [A-Za-z0-9_-]"
-    )
-    private String idempotencyKey;
 
     @Size(max = 255, message = "description tối đa 255 ký tự")
     private String description;

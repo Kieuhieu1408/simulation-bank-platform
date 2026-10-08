@@ -28,6 +28,21 @@ public class OutboxProperties {
     private Duration maxRetryBackoff = Duration.ofMinutes(5);
 
     /**
+     * Thời gian một worker giữ quyền publish event. Phải lớn hơn thời gian chờ
+     * broker ack tối đa ({@code money-bank.kafka.send-timeout}); nếu nhỏ hơn, lease
+     * hết hạn khi đang gửi và worker khác gửi trùng.
+     */
+    private Duration leaseDuration = Duration.ofSeconds(30);
+
+    public Duration getLeaseDuration() {
+        return leaseDuration;
+    }
+
+    public void setLeaseDuration(Duration leaseDuration) {
+        this.leaseDuration = leaseDuration;
+    }
+
+    /**
      * Số lần thử trước khi cảnh báo. Không xóa event sau ngưỡng này: mất event
      * nghiệp vụ nguy hiểm hơn là để nó tồn đọng và tạo alert.
      */

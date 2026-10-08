@@ -41,7 +41,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,
                                                       JwtDecoder jwtDecoder,
-                                                      JwtAuthenticationConverter jwtAuthenticationConverter)
+                                                      JwtAuthenticationConverter jwtAuthenticationConverter,
+                                                      CommonSecurityProperties properties)
             throws Exception {
         return http
                 // API stateless dùng bearer token nên không có session và không có
@@ -52,14 +53,26 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(requests -> requests
-                        // Probe của orchestrator: liveness không phụ thuộc downstream
-                        // (OPS-003) nên phải mở, ngược lại pod bị restart oan.
-                        .requestMatchers("/actuator/health/liveness", "/actuator/health/readiness").permitAll()
-                        // Endpoint quản trị còn lại chỉ mở trong management network,
-                        // không mở qua đường request thông thường (SRD 11.2).
-                        .requestMatchers("/actuator/**").denyAll()
-                        .anyRequest().denyAll())
+                .authorizeHttpRequests(requests -> {
+                    // Probe của orchestrator: liveness không phụ thuộc downstream
+                    // (OPS-003) nên phải mở, ngược lại pod bị restart oan.
+                    requests.requestMatchers("/actuator/health/liveness", "/actuator/health/readiness").permitAll();
+                    // Path công khai (ví dụ đăng nhập) khai báo trong yaml:
+                    // money-bank.security.public-paths
+                    if (!properties.getPublicPaths().isEmpty()) {
+                        requests.requestMatchers(properties.getPublicPaths().toArray(String[]::new)).permitAll();
+                    }
+                    // Path cần token hợp lệ: money-bank.security.authenticated-paths.
+                    // Quyền sở hữu vẫn được kiểm tra ở application service.
+                    if (!properties.getAuthenticatedPaths().isEmpty()) {
+                        requests.requestMatchers(properties.getAuthenticatedPaths().toArray(String[]::new))
+                                .authenticated();
+                    }
+                    // Endpoint quản trị còn lại chỉ mở trong management network,
+                    // không mở qua đường request thông thường (SRD 11.2).
+                    requests.requestMatchers("/actuator/**").denyAll();
+                    requests.anyRequest().denyAll();
+                })
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt
                                 .decoder(jwtDecoder)

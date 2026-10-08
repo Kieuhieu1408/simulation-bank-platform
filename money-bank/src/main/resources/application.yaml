@@ -38,6 +38,22 @@ spring:
             token-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}/protocol/openid-connect/token
   jackson:
     time-zone: UTC
+  # ── Spring Kafka Producer ──────────────────────────────────────────────────
+  # bootstrap-servers để trống theo mặc định → Kafka client KHÔNG được khởi tạo.
+  # Set qua env var KAFKA_BOOTSTRAP_SERVERS khi deploy với Kafka.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:}
+    producer:
+      # Acks và idempotence được override trong OutboxKafkaConfig.
+      # Khai báo ở đây để Spring Boot auto-config cũng nhận (nếu có auto-config khác).
+      acks: all
+      enable-idempotence: true
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    # Consumer chưa được dùng ở money-bank (U-08 sẽ thêm sau)
+    # consumer:
+    #   group-id: money-bank-inbox
+    #   auto-offset-reset: earliest
 
 server:
   port: 8181
@@ -45,6 +61,11 @@ server:
 # Internal service endpoints
 corebank:
   url: ${COREBANK_URL:http://localhost:8180}
+  # Timeout gọi Corebank: connect-timeout < response-timeout < total-timeout.
+  # total-timeout bao gồm cả bước lấy token client-credentials.
+  connect-timeout: ${COREBANK_CONNECT_TIMEOUT:2s}
+  response-timeout: ${COREBANK_RESPONSE_TIMEOUT:10s}
+  total-timeout: ${COREBANK_TOTAL_TIMEOUT:15s}
 
 management:
   endpoints:
@@ -79,6 +100,13 @@ money-bank:
     jwk-set-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}/protocol/openid-connect/certs
     issuer: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}
     audience: moneybank-service
+    # Path mở công khai, không cần token (ví dụ đăng nhập). Mặc định rỗng = deny-by-default.
+    # Đăng nhập do Keycloak đảm nhiệm và được gateway public qua /api/v1/auth/**;
+    # money-bank không có endpoint login nên để trống.
+    public-paths: []
+    # Path cần token hợp lệ. Ownership do application service kiểm tra.
+    authenticated-paths:
+      - /api/v1/**
 
   # ── Outbox Dispatcher (U-07) ────────────────────────────────────────────────
   # dispatcher-enabled: false   ← mặc định TẮT; chỉ bật khi Kafka sẵn sàng.
@@ -90,6 +118,8 @@ money-bank:
     poll-interval: 1s
     retry-backoff: 2s
     max-retry-backoff: 5m
+    # Thời gian worker giữ quyền publish một event. PHẢI lớn hơn money-bank.kafka.send-timeout.
+    lease-duration: ${OUTBOX_LEASE_DURATION:30s}
     alert-after-attempts: 10
 
   # ── Kafka Outbox Topics (U-07) ───────────────────────────────────────────────
@@ -97,21 +127,5 @@ money-bank:
     transfer-events-topic: ${KAFKA_TOPIC_TRANSFER_EVENTS:transfer-events}
     request-timeout-ms: 5000
     retries: 3
-
-# ── Spring Kafka Producer ────────────────────────────────────────────────────
-# bootstrap-servers để trống theo mặc định → Kafka client KHÔNG được khởi tạo.
-# Set qua env var KAFKA_BOOTSTRAP_SERVERS khi deploy với Kafka.
-spring:
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:}
-    producer:
-      # Acks và idempotence được override trong OutboxKafkaConfig.
-      # Khai báo ở đây để Spring Boot auto-config cũng nhận (nếu có auto-config khác).
-      acks: all
-      enable-idempotence: true
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer
-    # Consumer chưa được dùng ở money-bank (U-08 sẽ thêm sau)
-    # consumer:
-    #   group-id: money-bank-inbox
-    #   auto-offset-reset: earliest
+    # Thời gian tối đa chờ broker ack cho một lần publish. >= request-timeout-ms và < outbox.lease-duration.
+    send-timeout: ${KAFKA_SEND_TIMEOUT:10s}

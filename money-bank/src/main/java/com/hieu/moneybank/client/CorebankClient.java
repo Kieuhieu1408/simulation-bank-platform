@@ -1,11 +1,11 @@
 package com.hieu.moneybank.client;
 
+import com.hieu.moneybank.config.CorebankProperties;
 import com.hieu.moneybank.dto.request.TransferRequestDTO;
 import com.hieu.moneybank.dto.response.TransferResponseDTO;
 import com.hieu.moneybank.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
@@ -27,12 +27,12 @@ import reactor.core.publisher.Mono;
 public class CorebankClient {
 
     private final WebClient corebankWebClient;
+    private final CorebankProperties properties;
 
-    @Value("${corebank.url:http://localhost:8180}")
-    private String corebankBaseUrl;
-
-    public CorebankClient(@Qualifier("corebankWebClient") WebClient corebankWebClient) {
+    public CorebankClient(@Qualifier("corebankWebClient") WebClient corebankWebClient,
+                          CorebankProperties properties) {
         this.corebankWebClient = corebankWebClient;
+        this.properties = properties;
     }
 
     public TransferResponseDTO executeTransfer(TransferRequestDTO request) {
@@ -40,7 +40,7 @@ public class CorebankClient {
 
         return corebankWebClient
                 .post()
-                .uri(corebankBaseUrl + "/api/v1/transfers")
+                .uri("/api/v1/transfers")
                 .bodyValue(request)
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, response ->
@@ -56,6 +56,9 @@ public class CorebankClient {
                                 ))
                 )
                 .bodyToMono(TransferResponseDTO.class)
+                // Chốt chặn cuối (corebank.total-timeout): bao gồm cả bước lấy token,
+                // đảm bảo request thread không bị treo vô hạn.
+                .timeout(properties.getTotalTimeout())
                 .doOnError(e -> log.error("Failed to call corebank for transfer", e))
                 .block(); // blocking vì corebank handler hiện tại là synchronous
     }

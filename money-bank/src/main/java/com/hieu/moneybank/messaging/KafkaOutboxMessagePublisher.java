@@ -2,7 +2,9 @@ package com.hieu.moneybank.messaging;
 
 import com.hieu.common.outbox.OutboxMessage;
 import com.hieu.common.outbox.OutboxMessagePublisher;
+import com.hieu.common.outbox.OutboxProperties;
 import com.hieu.moneybank.config.OutboxKafkaProperties;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -48,11 +50,27 @@ import java.util.concurrent.TimeoutException;
 @Slf4j
 public class KafkaOutboxMessagePublisher implements OutboxMessagePublisher {
 
-    /** Timeout chờ broker ack. Nếu vượt quá → dispatcher retry. */
-    private static final Duration SEND_TIMEOUT = Duration.ofSeconds(10);
-
     private final KafkaTemplate<String, String> outboxKafkaTemplate;
     private final OutboxKafkaProperties kafkaProperties;
+    private final OutboxProperties outboxProperties;
+
+    /**
+     * Fail-fast khi cấu hình không nhất quán: lease phải dài hơn thời gian chờ ack,
+     * nếu không worker khác sẽ lease lại event khi lần gửi đầu còn đang chạy.
+     */
+    @PostConstruct
+    void validateTimeouts() {
+        Duration sendTimeout = kafkaProperties.getSendTimeout();
+        Duration lease = outboxProperties.getLeaseDuration();
+        if (sendTimeout == null || sendTimeout.isZero() || sendTimeout.isNegative()) {
+            throw new IllegalStateException("money-bank.kafka.send-timeout phải > 0");
+        }
+        if (lease == null || lease.compareTo(sendTimeout) <= 0) {
+            throw new IllegalStateException(
+                "money-bank.outbox.lease-duration (" + lease + ") phải lớn hơn "
+                    + "money-bank.kafka.send-timeout (" + sendTimeout + ")");
+        }
+    }
 
     @Override
     public void publish(OutboxMessage message) {
@@ -65,9 +83,10 @@ public class KafkaOutboxMessagePublisher implements OutboxMessagePublisher {
         log.debug("eventName=OUTBOX_PUBLISH_ATTEMPT eventId={} eventType={} topic={} key={}",
             message.eventId(), message.eventType(), topic, key);
 
+        Duration sendTimeout = kafkaProperties.getSendTimeout();
         try {
             SendResult<String, String> result = outboxKafkaTemplate.send(record)
-                .get(SEND_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+                .get(sendTimeout.toMillis(), TimeUnit.MILLISECONDS);
 
             log.info("eventName=OUTBOX_PUBLISHED eventId={} eventType={} topic={} partition={} offset={}",
                 message.eventId(), message.eventType(), topic,
@@ -77,7 +96,7 @@ public class KafkaOutboxMessagePublisher implements OutboxMessagePublisher {
         } catch (TimeoutException e) {
             // Broker không ack đúng hạn → dispatcher sẽ retry
             throw new KafkaSendException(
-                "Kafka send timeout after " + SEND_TIMEOUT.toSeconds() + "s" +
+                "Kafka send timeout after " + sendTimeout.toMillis() + "ms" +
                 " [eventId=" + message.eventId() + "]", e);
 
         } catch (InterruptedException e) {

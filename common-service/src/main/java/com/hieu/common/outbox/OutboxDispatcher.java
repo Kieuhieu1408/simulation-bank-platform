@@ -97,8 +97,9 @@ public class OutboxDispatcher {
     }
 
     private Duration leaseDuration() {
-        // Lease dài hơn thời gian publish kỳ vọng nhưng đủ ngắn để event được thử
-        // lại sớm nếu worker chết.
-        return properties.getRetryBackoff();
+        // Lease lấy từ cấu hình ({@code money-bank.outbox.lease-duration}): dài hơn
+        // thời gian publish tối đa nhưng đủ ngắn để event được thử lại sớm nếu
+        // worker chết.
+        return properties.getLeaseDuration();
     }
 }

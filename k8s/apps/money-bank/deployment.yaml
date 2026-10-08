@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: money-bank
+  namespace: sim-bank
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: money-bank
+  template:
+    metadata:
+      labels:
+        app: money-bank
+    spec:
+      containers:
+        - name: money-bank
+          image: harbor.sim-bank.local/sim-bank/money-bank:latest
+          ports:
+            - containerPort: 8181
+          envFrom:
+            - configMapRef:
+                name: sim-bank-common
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8181
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8181
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
