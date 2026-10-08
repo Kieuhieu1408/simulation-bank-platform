@@ -39,3 +39,7 @@ logs/
 tmp/
 temp/
 *.tmp
+
+#AI config
+.claude/
+.gemini/
