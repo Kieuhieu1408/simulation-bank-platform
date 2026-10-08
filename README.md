@@ -2,52 +2,46 @@
 
 Nền tảng mô phỏng hệ sinh thái ngân hàng và thanh toán, được xây dựng theo kiến trúc microservice để phục vụ học tập, thử nghiệm nghiệp vụ và phát triển theo nhóm.
 
-## 1. Tổng quan và chức năng các service
+## 1. Tổng quan Dự án & Kiến trúc hệ thống
+Chi tiết kiến trúc và thiết kế nghiệp vụ của dự án được quy hoạch tập trung tại thư mục `docs/`. Vui lòng tham khảo:
+- **[BRD (Business Requirements Document)](docs/brd.md):** Chi tiết về ý tưởng cốt lõi, yêu cầu nghiệp vụ, FR (yêu cầu chức năng) và NFR (yêu cầu phi chức năng).
+- **[HLD (High-Level Design)](docs/hld.md):** Kiến trúc hệ thống tổng thể, mô tả các services, thiết kế CSDL (CQRS/Event Sourcing), quy chuẩn Logging (OpenTelemetry) và kiến thức DevOps/Kubernetes.
 
-- `cms`: Cổng quản trị nội bộ cho vận hành, quản lý merchant và tra cứu giao dịch.
-- `paygate`: Cổng thanh toán mô phỏng cho nghiệp vụ thu hộ, chi hộ và tính phí.
-- `money-bank`: API ngân hàng số mô phỏng: tài khoản thanh toán, thẻ và chuyển tiền.
-- `corebank`: Quản lý số tài khoản, số thẻ, số dư và lịch sử giao dịch – nguồn dữ liệu giao dịch trung tâm.
-- `profile-service`: Quản lý hồ sơ người dùng, merchant và phân quyền.
-- `notification-service`: Gửi thông báo về các sự kiện giao dịch.
-- `common-service`: Module thư viện dùng chung chứa API/event DTO, kiểu dữ liệu nền tảng và tiện ích kỹ thuật thống nhất giữa các service; không chạy như một service độc lập và không sở hữu database.
+## 2. Cấu trúc Thư mục
 
-## 2. Thông tin kỹ thuật sơ bộ
+- `docs/`: Chứa các tài liệu thiết kế hệ thống chuẩn (BRD, HLD) và tài liệu hướng dẫn chuyên sâu của từng service.
+- `config/`: Chứa các file cấu hình hạ tầng cho môi trường local (Keycloak, Prometheus, Grafana, Nginx, Vault, Otel Collector). Được kết nối trực tiếp với `compose.yaml`.
+- `k8s/`: Chứa các cấu hình phân bổ tài nguyên và triển khai lên cụm Kubernetes (Manifests, GitOps).
+- `common-service/`: Thư viện dùng chung (Shared library, DTOs, Envelopes) giữa các service, không có runtime độc lập.
+- **Microservices chính:**
+  - `corebank/`: Sổ cái trung tâm quản lý số dư và lịch sử giao dịch (Sử dụng Oracle DB, Outbox Pattern). 
+  - `money-bank/`: Dịch vụ ngân hàng số mô phỏng, xử lý luồng giao dịch chuyển tiền.
+  - `cms/`: Hệ thống quản trị nội bộ Back-office.
+  - `paygate/`: Cổng thanh toán nghiệp vụ thu/chi hộ.
+  - `profile-service/`: Quản lý hồ sơ định danh, RBAC.
+  - `notification-service/`: Consumer lắng nghe sự kiện từ Kafka để gửi thông báo.
 
-| Service | Công nghệ dự kiến | Design pattern dự kiến |
-| --- | --- | --- |
-| `cms` | Backend Java Spring Boot 4, frontend Angular; cơ sở dữ liệu sẽ xác định sau | Layered Architecture, RBAC |
-| `paygate` | Java Spring Boot 4, database riêng, Kafka, Docker | Hexagonal Architecture, Saga, Strategy (tính phí) |
-| `money-bank` | Java Spring Boot 4, database riêng, Kafka, Docker | Hexagonal Architecture, CQRS cơ bản |
-| `corebank` | Java Spring Boot 4, Oracle Database cho bản demo, Kafka, Docker | Layered Architecture, Transaction Script, Outbox |
-| `profile-service` | Java Spring Boot 4, PostgreSQL, Docker | Layered Architecture, RBAC |
-| `notification-service` | Java Spring Boot 4, Kafka, Docker | Event-driven, Strategy (kênh gửi) |
-| `common-service` | Java/Maven library, không có runtime và database riêng | Shared contracts, shared kernel tối thiểu |
+## 3. Khởi chạy Môi trường Local (Docker Compose)
+Dự án sử dụng `compose.yaml` (nằm ở thư mục gốc) để tự động hóa toàn bộ hạ tầng cục bộ (local dev). Các file cấu hình sẽ được tự động trỏ vào thư mục `config/`.
 
-### 2.1. Ranh giới của `common-service`
+```bash
+# Khởi động toàn bộ hệ thống (Bao gồm Hạ tầng + Các microservices)
+docker compose up -d
 
-Được phép đặt trong module dùng chung:
+# Hoặc chỉ khởi động nhóm hạ tầng cơ sở (để run các service trên IDE)
+docker compose up -d keycloak redis postgres oracle vault
+```
 
-- API DTO và event DTO đã có version, metadata chuẩn và quy tắc tương thích ngược.
-- Kiểu dữ liệu nền tảng ổn định như money/currency, correlation ID, error envelope và pagination contract.
-- Validation annotation, serialization convention và tiện ích kỹ thuật không phụ thuộc nghiệp vụ của một service cụ thể.
+## 4. Ranh giới của `common-service`
 
-Không đặt trong module dùng chung:
+**Nên đặt vào:**
+- API DTO và event DTO chuẩn giao tiếp giữa các service.
+- Kiểu dữ liệu nền tảng ổn định (money/currency, correlation ID, error envelope).
+- Tiện ích kỹ thuật không phụ thuộc nghiệp vụ cụ thể.
 
-- JPA entity, repository, database model hoặc migration của một service.
-- Business workflow, state machine, authorization policy hoặc domain rule thuộc riêng Money Bank, Profile Service, Paygate hay Corebank.
-- Internal implementation DTO của adapter/controller nếu không phải integration contract được nhiều service sử dụng.
+**Không được đặt vào:**
+- JPA entity, repository hoặc database schema của một service bất kỳ.
+- Business workflow, state machine (VD: Quy trình chuyển tiền thuộc về Money Bank).
+- Mỗi service tự quản lý domain model và dữ liệu riêng. Sự thay đổi có rủi ro "breaking change" trong shared contract phải nâng major version.
 
-Mỗi service vẫn sở hữu domain model và dữ liệu của mình. Thay đổi breaking trong shared contract phải tăng major version và được consumer contract test trước khi nâng phiên bản.
-
-## 3. Corebank: phạm vi MVP và cách chạy
-
-Corebank là nguồn sự thật duy nhất cho số dư và lịch sử giao dịch. Các service khác không tự cập nhật số dư; chúng gọi API của Corebank để tạo tài khoản, truy vấn hoặc ghi nhận giao dịch.
-
-Corebank được đóng gói bằng Docker. Container khởi tạo Oracle Database cho bản demo và nạp sẵn tài khoản/mật khẩu cấu hình trong Docker Compose. Thông tin này chỉ dùng cho môi trường học tập, không dùng cho production.
-
-Luồng chuyển tiền MVP: kiểm tra tài khoản nguồn/đích và số dư → trừ tiền nguồn, cộng tiền đích trong một transaction → ghi lịch sử giao dịch → trả mã giao dịch và trạng thái.
-
-API chi tiết được chốt trong [corebank/README.md](corebank/README.md).
-
-> Đây là bản khởi tạo. Công nghệ, API contract, dữ liệu và kiến trúc chi tiết sẽ được cập nhật dần.
+> Hệ thống luôn duy trì tư duy "Build for Failure" và "Secure by Design" - Mọi giao dịch liên quan tới tiền tệ được bảo vệ nghiêm ngặt tuyệt đối thông qua Data Integrity.
