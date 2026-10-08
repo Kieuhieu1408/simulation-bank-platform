@@ -43,3 +43,9 @@ temp/
 #AI config
 .claude/
 .gemini/
+
+# K8s and Helm runtime files
+k8s-kompose/
+.helmfile/
+.helm/
+*.lock

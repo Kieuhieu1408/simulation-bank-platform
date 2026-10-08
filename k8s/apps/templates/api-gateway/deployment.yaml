@@ -1,35 +1,38 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: corebank
+  name: api-gateway
   namespace: sim-bank
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: corebank
+      app: api-gateway
   template:
     metadata:
       labels:
-        app: corebank
+        app: api-gateway
     spec:
       containers:
-        - name: corebank
-          image: harbor.sim-bank.local/sim-bank/corebank:latest
+        - name: api-gateway
+          image: harbor.sim-bank.local/sim-bank/api-gateway:latest
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8180
+            - containerPort: 8080
           envFrom:
             - configMapRef:
                 name: sim-bank-common
+            - secretRef:
+                name: sim-bank-secret
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: 8180
+              port: 8080
             initialDelaySeconds: 30
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: 8180
+              port: 8080
           resources:
             requests:
               cpu: 250m

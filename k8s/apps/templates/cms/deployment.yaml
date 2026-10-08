@@ -16,11 +16,14 @@ spec:
       containers:
         - name: cms
           image: harbor.sim-bank.local/sim-bank/cms:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8182
           envFrom:
             - configMapRef:
                 name: sim-bank-common
+            - secretRef:
+                name: sim-bank-secret
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness

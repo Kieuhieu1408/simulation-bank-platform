@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sim-bank-common
+  namespace: sim-bank
+data:
+  # Kết nối ra bên ngoài (Docker Compose) bằng host.docker.internal
+  KEYCLOAK_ISSUER_URI: http://host.docker.internal:8090/realms/simulation-bank
+  REDIS_HOST: host.docker.internal
+  REDIS_PORT: "6379"
+  DB_URL: jdbc:oracle:thin:@host.docker.internal:1521/FREEPDB1
+  POSTGRES_URL: jdbc:postgresql://host.docker.internal:5432/common_db
+  KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9092
+  VAULT_ADDR: http://host.docker.internal:8200
+  
+  # Kết nối nội bộ K8s (giữa các microservices)
+  COREBANK_URL: http://corebank:8180
+  MONEY_BANK_URL: http://money-bank:8181
+  CMS_BACKEND_URL: http://cms:8182
+  
+  # Observability
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318/v1/traces
+  OTEL_LOGS_EXPORTER: otlp
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://host.docker.internal:4318/v1/logs

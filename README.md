@@ -45,3 +45,24 @@ docker compose up -d keycloak redis postgres oracle vault
 - Mỗi service tự quản lý domain model và dữ liệu riêng. Sự thay đổi có rủi ro "breaking change" trong shared contract phải nâng major version.
 
 > Hệ thống luôn duy trì tư duy "Build for Failure" và "Secure by Design" - Mọi giao dịch liên quan tới tiền tệ được bảo vệ nghiêm ngặt tuyệt đối thông qua Data Integrity.
+
+## 5. Danh sách Ports (Cổng kết nối)
+
+### Các dịch vụ Microservices (chạy trên Kubernetes)
+- **API Gateway**: `8080` (Có thể truy cập trực tiếp từ máy qua `http://localhost:8080`)
+- **Corebank**: `8180`
+- **Money Bank**: `8181`
+- **CMS**: `8182`
+
+### Các dịch vụ Hạ tầng (chạy qua Docker Compose / make infra)
+- **Keycloak**: `8090`
+- **Vault**: `8200`
+- **Oracle DB**: `1521`
+- **PostgreSQL**: `5432`
+- **Redis**: `6379`
+- **Kafka**: `9092`
+- **Loki**: `3100`
+- **Jaeger UI**: `16686`
+- **Prometheus UI**: `9090`
+- **Grafana UI**: `3000`
+- **OTel Collector**: `4317` (gRPC) / `4318` (HTTP)

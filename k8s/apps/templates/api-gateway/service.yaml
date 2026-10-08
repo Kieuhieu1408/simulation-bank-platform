@@ -4,6 +4,7 @@ metadata:
   name: api-gateway
   namespace: sim-bank
 spec:
+  type: LoadBalancer
   selector:
     app: api-gateway
   ports:
