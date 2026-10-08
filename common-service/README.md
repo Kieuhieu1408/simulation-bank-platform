@@ -2,6 +2,11 @@
 
 Module `common-service` cung cấp các thư viện và cấu trúc dùng chung cho toàn bộ Simulation Bank Platform. Việc sử dụng `common-service` giúp giảm thiểu duplicate code và đồng nhất kiến trúc (Security, CQRS, Idempotency, Outbox, Exception Handling) giữa các dịch vụ như `corebank` và `money-bank`.
 
+## Tài liệu Thiết kế
+- **[BRD (Business Requirements Document)](docs/brd.md):** Mục tiêu nghiệp vụ, chuẩn hóa và kiểm soát ranh giới kỹ thuật.
+- **[HLD (High-Level Design)](docs/hld.md):** Kiến trúc phân tầng, luồng CQRS Mediator Pipeline, Idempotency & Outbox engine.
+- **[SRD (System Requirements Document)](docs/srd.md):** Đặc tả chi tiết Interfaces, Annotations, ErrorCode và hướng dẫn tích hợp.
+
 ## Cấu trúc thư mục chính
 
 - `com.hieu.common.cqrs`: Định nghĩa các interface lõi cho mô hình CQRS (`Command`, `Query`, `CommandHandler`, `QueryHandler`, `Dispatcher`, `SpringDispatcher`).

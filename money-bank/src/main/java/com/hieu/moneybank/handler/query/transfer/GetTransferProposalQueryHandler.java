@@ -35,16 +35,15 @@ public class GetTransferProposalQueryHandler {
 
         @Override
         public TransferProposalResponseDTO handle(GetProposalByIdQuery query) {
-            TransferProposalResponseDTO proposal = repository.findById(query.proposalId())
-                .map(TransferProposalResponseDTO::from)
+            var entity = repository.findById(query.proposalId())
                 .orElseThrow(() -> new NotFoundException("Proposal không tồn tại: " + query.proposalId()));
                 
             String currentUserId = identityContextResolver.requireCurrent().customerId();
-            if (!currentUserId.equals(proposal.initiatorCustomerId())) {
+            if (!currentUserId.equals(entity.getInitiatorCustomerId())) {
                 throw new org.springframework.security.access.AccessDeniedException("Bạn không có quyền xem proposal này");
             }
             
-            return proposal;
+            return TransferProposalResponseDTO.from(entity);
         }
     }
 

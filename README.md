@@ -4,6 +4,7 @@ Nền tảng mô phỏng hệ sinh thái ngân hàng và thanh toán, được x
 
 ## 1. Tổng quan Dự án & Kiến trúc hệ thống
 Chi tiết kiến trúc và thiết kế nghiệp vụ của dự án được quy hoạch tập trung tại thư mục `docs/`. Vui lòng tham khảo:
+- **[Documentation Hub](docs/README.md):** Mục lục toàn bộ tài liệu BRD và SRD của từng microservice và thư viện nền tảng.
 - **[BRD (Business Requirements Document)](docs/brd.md):** Chi tiết về ý tưởng cốt lõi, yêu cầu nghiệp vụ, FR (yêu cầu chức năng) và NFR (yêu cầu phi chức năng).
 - **[HLD (High-Level Design)](docs/hld.md):** Kiến trúc hệ thống tổng thể, mô tả các services, thiết kế CSDL (CQRS/Event Sourcing), quy chuẩn Logging (OpenTelemetry) và kiến thức DevOps/Kubernetes.
 

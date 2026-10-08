@@ -76,6 +76,7 @@ public class SecurityConfig {
                         .pathMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // Prometheus — restrict qua network policy ở production
                         .pathMatchers("/actuator/prometheus").permitAll()
+                        .pathMatchers("/api/auth/login").permitAll()
                         // Tất cả API route đều cần authenticate
                         .anyExchange().authenticated()
                 )

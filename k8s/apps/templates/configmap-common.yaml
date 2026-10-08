@@ -22,3 +22,4 @@ data:
   OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318/v1/traces
   OTEL_LOGS_EXPORTER: otlp
   OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://host.docker.internal:4318/v1/logs
+  LOKI_URL: http://host.docker.internal:3100/loki/api/v1/push

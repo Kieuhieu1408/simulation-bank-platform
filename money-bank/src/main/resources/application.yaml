@@ -7,9 +7,10 @@ spring:
     password: ${DB_PASSWORD:corebank_demo}
     driver-class-name: oracle.jdbc.OracleDriver
   flyway:
-    enabled: true
+    enabled: false                           # Schema Oracle do corebank quản lý tập trung qua V1__init_schema.sql
     locations: classpath:db/migration
-    clean-disabled: true          # NEVER drop schema in non-local env
+    clean-disabled: true
+    table: flyway_moneybank_history          # NEVER drop schema in non-local env
     clean-on-validation-error: false
     baseline-on-migrate: true
   jpa:

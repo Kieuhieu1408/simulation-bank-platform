@@ -64,6 +64,16 @@ public class GatewayErrorHandler implements WebExceptionHandler {
                 case 502 -> "Service temporarily unavailable";
                 default -> "Gateway error";
             };
+        } else if (ex instanceof org.springframework.web.reactive.function.client.WebClientResponseException wce) {
+            status = HttpStatus.valueOf(wce.getStatusCode().value());
+            code = "GW_" + status.value();
+            message = "Upstream error: " + status.getReasonPhrase();
+            log.error("WebClient error: {} - {}", wce.getStatusCode(), wce.getResponseBodyAsString());
+        } else if (ex instanceof org.springframework.web.reactive.function.client.WebClientRequestException) {
+            status = HttpStatus.BAD_GATEWAY;
+            code = "GW_502";
+            message = "Upstream connection refused";
+            log.error("WebClient request error: {}", ex.getMessage());
         } else {
             // Unexpected — log đầy đủ nội bộ nhưng trả về message chung
             log.error("Unexpected gateway error: {}", ex.getMessage(), ex);

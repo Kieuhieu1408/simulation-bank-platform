@@ -2,6 +2,11 @@
 
 Corebank là service trung tâm của `simulation-bank-platform`, chịu trách nhiệm lưu trữ tài khoản thanh toán, thẻ, số dư và lịch sử giao dịch. Đây là bản mô phỏng phục vụ học tập; không xử lý dữ liệu ngân hàng thật.
 
+## Tài liệu Dự án
+- **[BRD (Business Requirements Document)](docs/brd.md):** Yêu cầu nghiệp vụ, tính toàn vẹn sổ cái và quy tắc kế toán kép.
+- **[HLD (High-Level Design)](docs/hld.md):** Thiết kế kiến trúc tổng thể, mô hình CQRS, Event Sourcing và kiểm soát đồng thời.
+- **[SRD (System Requirements Document)](docs/srd.md):** Đặc tả kỹ thuật chi tiết, schema CSDL Oracle và API endpoints.
+
 ## Phạm vi chức năng MVP
 
 - Tạo và tra cứu tài khoản thanh toán.
