@@ -48,38 +48,38 @@ public class GatewayErrorHandler implements WebExceptionHandler {
         String message;
 
         if (ex instanceof InvalidBearerTokenException) {
-            status = HttpStatus.UNAUTHORIZED;
-            code = "AUTH_001";
-            message = "Token invalid or expired";
+            GatewayErrorCode errorCode = GatewayErrorCode.TOKEN_INVALID;
+            status = errorCode.getStatus();
+            code = errorCode.getCode();
+            message = errorCode.getMessage();
         } else if (ex instanceof org.springframework.security.core.AuthenticationException) {
-            status = HttpStatus.UNAUTHORIZED;
-            code = "AUTH_002";
-            message = "Authentication required";
+            GatewayErrorCode errorCode = GatewayErrorCode.AUTH_REQUIRED;
+            status = errorCode.getStatus();
+            code = errorCode.getCode();
+            message = errorCode.getMessage();
         } else if (ex instanceof ResponseStatusException rse) {
             status = HttpStatus.valueOf(rse.getStatusCode().value());
-            code = "GW_" + status.value();
-            message = switch (status.value()) {
-                case 404 -> "Route not found";
-                case 429 -> "Too many requests. Please slow down";
-                case 502 -> "Service temporarily unavailable";
-                default -> "Gateway error";
-            };
+            code = GatewayErrorCode.PREFIX + status.value();
+            GatewayErrorCode errorCode = GatewayErrorCode.fromHttpStatus(status.value());
+            message = (errorCode != null) ? errorCode.getMessage() : "Gateway error";
         } else if (ex instanceof org.springframework.web.reactive.function.client.WebClientResponseException wce) {
             status = HttpStatus.valueOf(wce.getStatusCode().value());
-            code = "GW_" + status.value();
+            code = GatewayErrorCode.PREFIX + status.value();
             message = "Upstream error: " + status.getReasonPhrase();
             log.error("WebClient error: {} - {}", wce.getStatusCode(), wce.getResponseBodyAsString());
         } else if (ex instanceof org.springframework.web.reactive.function.client.WebClientRequestException) {
-            status = HttpStatus.BAD_GATEWAY;
-            code = "GW_502";
-            message = "Upstream connection refused";
+            GatewayErrorCode errorCode = GatewayErrorCode.UPSTREAM_CONNECTION_REFUSED;
+            status = errorCode.getStatus();
+            code = errorCode.getCode();
+            message = errorCode.getMessage();
             log.error("WebClient request error: {}", ex.getMessage());
         } else {
             // Unexpected — log đầy đủ nội bộ nhưng trả về message chung
             log.error("Unexpected gateway error: {}", ex.getMessage(), ex);
-            status = HttpStatus.INTERNAL_SERVER_ERROR;
-            code = "GW_500";
-            message = "Unexpected error. Please try again";
+            GatewayErrorCode errorCode = GatewayErrorCode.UNEXPECTED_ERROR;
+            status = errorCode.getStatus();
+            code = errorCode.getCode();
+            message = errorCode.getMessage();
         }
 
         String correlationId = exchange.getRequest().getHeaders()
