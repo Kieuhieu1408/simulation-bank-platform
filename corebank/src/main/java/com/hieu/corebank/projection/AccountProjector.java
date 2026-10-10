@@ -3,9 +3,10 @@ package com.hieu.corebank.projection;
 import com.hieu.corebank.eventsourcing.event.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.transaction.event.TransactionPhase;
 
 import java.util.UUID;
 
@@ -33,7 +34,7 @@ public class AccountProjector {
 
     // ── AccountCreated ────────────────────────────────────────────────────────
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT, fallbackExecution = true)
     @Transactional
     public void on(AccountCreatedEvent event) {
         // Idempotency: nếu view đã tồn tại thì bỏ qua
@@ -57,8 +58,8 @@ public class AccountProjector {
     }
 
     // ── FundsReserved ─────────────────────────────────────────────────────────
-
-    @EventListener
+ 
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT, fallbackExecution = true)
     @Transactional
     public void on(FundsReservedEvent event) {
         AccountView view = loadOrWarn(event.aggregateId());
@@ -85,7 +86,7 @@ public class AccountProjector {
 
     // ── TransferCompleted ─────────────────────────────────────────────────────
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT, fallbackExecution = true)
     @Transactional
     public void on(TransferCompletedEvent event) {
         AccountView view = loadOrWarn(event.aggregateId());
@@ -99,7 +100,7 @@ public class AccountProjector {
 
     // ── TransferFailed ────────────────────────────────────────────────────────
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT, fallbackExecution = true)
     @Transactional
     public void on(TransferFailedEvent event) {
         AccountView view = loadOrWarn(event.aggregateId());
@@ -126,7 +127,7 @@ public class AccountProjector {
 
     // ── FundsDeposited ────────────────────────────────────────────────────────
 
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT, fallbackExecution = true)
     @Transactional
     public void on(FundsDepositedEvent event) {
         AccountView view = loadOrWarn(event.aggregateId());

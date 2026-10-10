@@ -17,6 +17,10 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     ErrorResponse notFound(NotFoundException ex) { return error(HttpStatus.NOT_FOUND, ex.getMessage()); }
 
+    @ExceptionHandler(ConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    ErrorResponse conflict(ConflictException ex) { return error(HttpStatus.CONFLICT, ex.getMessage()); }
+
     @ExceptionHandler({BusinessException.class, MethodArgumentTypeMismatchException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ErrorResponse badRequest(Exception ex) { return error(HttpStatus.BAD_REQUEST, ex.getMessage()); }

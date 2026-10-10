@@ -14,11 +14,19 @@ import java.time.Instant;
 @Builder
 public class CustomerResponseDTO {
     private String cifNumber;
+    private String nationalId;
+    private String fullName;
+    private String phoneNumber;
+    private String email;
     private Instant createdAt;
 
     public static CustomerResponseDTO from(Customer customer) {
         return CustomerResponseDTO.builder()
                 .cifNumber(customer.getCifNumber())
+                .nationalId(customer.getNationalId())
+                .fullName(customer.getFullName())
+                .phoneNumber(customer.getPhoneNumber())
+                .email(customer.getEmail())
                 .createdAt(customer.getCreatedAt())
                 .build();
     }

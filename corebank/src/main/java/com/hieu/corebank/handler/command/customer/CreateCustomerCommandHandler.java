@@ -23,7 +23,16 @@ public class CreateCustomerCommandHandler implements CommandHandler<CustomerCrea
         if (customers.existsByCifNumber(cifNumber)) {
             throw new BusinessException("CIF already exists: " + cifNumber);
         }
-        Customer customer = customers.save(new Customer(cifNumber));
+        if (command.getNationalId() != null && customers.existsByNationalId(command.getNationalId())) {
+            throw new BusinessException("National ID already exists: " + command.getNationalId());
+        }
+        Customer customer = customers.save(new Customer(
+                cifNumber,
+                command.getNationalId(),
+                command.getFullName(),
+                command.getPhoneNumber(),
+                command.getEmail()
+        ));
         return CustomerResponseDTO.from(customer);
     }
 }

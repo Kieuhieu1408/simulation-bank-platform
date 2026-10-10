@@ -1,7 +1,7 @@
 package com.hieu.corebank.dto.response;
 
 import com.hieu.common.constant.TransactionStatus;
-import com.hieu.corebank.domain.BankTransaction;
+import com.hieu.corebank.projection.TransferView;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,16 +24,16 @@ public class TransferResponseDTO {
     private String description;
     private Instant createdAt;
 
-    public static TransferResponseDTO from(BankTransaction t) {
+    public static TransferResponseDTO from(TransferView view) {
         return TransferResponseDTO.builder()
-                .transactionId(t.getId())
-                .status(t.getStatus())
-                .sourceAccountId(t.getSourceAccount().getId())
-                .destinationAccountId(t.getDestinationAccount().getId())
-                .amount(t.getAmount())
-                .currency(t.getCurrency())
-                .description(t.getDescription())
-                .createdAt(t.getCreatedAt())
+                .transactionId(view.getTransferId())
+                .status(TransactionStatus.valueOf(view.getStatus()))
+                .sourceAccountId(view.getSourceAccountId())
+                .destinationAccountId(view.getDestinationAccountId())
+                .amount(view.getAmount())
+                .currency(view.getCurrency())
+                .description(view.getDescription())
+                .createdAt(view.getCreatedAt())
                 .build();
     }
 }

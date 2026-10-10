@@ -17,4 +17,13 @@ public class CustomerCreateRequestDTO implements Command<CustomerResponseDTO> {
     @NotBlank
     @Pattern(regexp = "[A-Za-z0-9-]{6,20}", message = "cifNumber must contain 6-20 letters, digits, or hyphens")
     private String cifNumber;
+
+    private String nationalId;
+    private String fullName;
+    private String phoneNumber;
+    private String email;
+
+    public CustomerCreateRequestDTO(String cifNumber) {
+        this.cifNumber = cifNumber;
+    }
 }

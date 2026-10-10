@@ -19,12 +19,8 @@ public class BankCard {
     @Column(name = "card_number", nullable = false, length = 16)
     private String cardNumber;
 
-    @Column(nullable = false, length = 3)
-    private String cvv;
-
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
-    @JoinColumn(name = "account_id", nullable = false)
-    private Account account;
+    @Column(name = "account_id", nullable = false, length = 36)
+    private String accountId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -35,11 +31,10 @@ public class BankCard {
 
     protected BankCard() {}
 
-    public BankCard(String cardNumber, String cvv, Account account) {
+    public BankCard(String cardNumber, String accountId) {
         this.id = UUID.randomUUID().toString();
         this.cardNumber = cardNumber;
-        this.cvv = cvv;
-        this.account = account;
+        this.accountId = accountId;
         this.status = CardStatus.ACTIVE;
         this.createdAt = Instant.now();
     }

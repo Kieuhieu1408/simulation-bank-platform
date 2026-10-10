@@ -38,8 +38,9 @@ public class CreateAccountCommandHandler implements CommandHandler<AccountCreate
     @Override
     @Transactional
     public AccountResponseDTO handle(AccountCreateRequestDTO request) {
-        Customer customer = customers.findById(request.getCifNumber())
-                .orElseThrow(() -> new NotFoundException("Customer not found: " + request.getCifNumber()));
+        String cif = request.getCifNumber().toUpperCase();
+        Customer customer = customers.findById(cif)
+                .orElseThrow(() -> new NotFoundException("Customer not found: " + cif));
 
         BigDecimal initialBalance = request.getInitialBalance() == null
                 ? BigDecimal.ZERO

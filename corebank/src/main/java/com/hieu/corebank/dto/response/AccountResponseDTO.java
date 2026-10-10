@@ -1,7 +1,7 @@
 package com.hieu.corebank.dto.response;
 
 import com.hieu.common.constant.AccountStatus;
-import com.hieu.corebank.domain.Account;
+import com.hieu.corebank.projection.AccountView;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,15 +23,15 @@ public class AccountResponseDTO {
     private AccountStatus status;
     private Instant createdAt;
 
-    public static AccountResponseDTO from(Account a) {
+    public static AccountResponseDTO from(AccountView a) {
         return AccountResponseDTO.builder()
-                .accountId(a.getId())
+                .accountId(a.getAccountId())
                 .accountNumber(a.getAccountNumber())
-                .cifNumber(a.getCustomer().getCifNumber())
+                .cifNumber(a.getCustomerId())
                 .currency(a.getCurrency())
-                .balance(a.getBalance())
+                .balance(a.getAvailableBalance())
                 .status(a.getStatus())
-                .createdAt(a.getCreatedAt())
+                .createdAt(a.getLastUpdatedAt())
                 .build();
     }
 }

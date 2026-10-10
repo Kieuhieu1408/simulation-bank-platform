@@ -37,14 +37,17 @@ public class EventStore {
     private final SnapshotRepository    snapshotRepository;
     private final OutboxRecorder        outboxRecorder;
     private final ObjectMapper          objectMapper;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     public EventStore(DomainEventRepository eventRepository,
                       SnapshotRepository snapshotRepository,
                       OutboxRecorder outboxRecorder,
-                      ObjectMapper objectMapper) {
+                      ObjectMapper objectMapper,
+                      org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.eventRepository = eventRepository;
         this.snapshotRepository = snapshotRepository;
         this.outboxRecorder = outboxRecorder;
+        this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper.rebuild()
                 .changeDefaultVisibility(vc -> vc
                         .withFieldVisibility(com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
@@ -121,6 +124,8 @@ public class EventStore {
 
             log.debug("Appended event: type={} aggregateId={} version={}",
                     event.eventType(), event.aggregateId(), event.version());
+
+            eventPublisher.publishEvent(event);
         }
 
         // Chụp Snapshot nếu đủ ngưỡng
