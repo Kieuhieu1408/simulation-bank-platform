@@ -1,10 +1,9 @@
 # Business Requirements Document (BRD) — Corebank Service
 **Dự án:** Simulation Bank Platform  
 **Phân hệ:** Sổ cái Ngân hàng Trung tâm (`corebank`)  
-**Phiên bản:** 1.0.0  
-**Ngày ban hành:** 2026-10-08  
-**Trạng thái:** Chính thức  
-
+**Phiên bản:** 1.1.0  
+**Ngày cập nhật:** 2026-10-10  
+**Trạng thái:** Chính thức
 ---
 
 ## 1. Giới thiệu & Bối cảnh Nghiệp vụ
@@ -20,7 +19,7 @@ Phân hệ `corebank` trong **Simulation Bank Platform** được xây dựng nh
 - **BG-CB-01 (Quản lý Sổ cái chuẩn mực):** Vận hành sổ cái tài khoản và giao dịch bất biến, hỗ trợ đối soát (Reconciliation) tự động.
 - **BG-CB-02 (Bảo vệ Số dư & Chống Double-Spending):** Đảm bảo không bao giờ xảy ra tình trạng số dư bị âm ngoài hạn mức cho phép hoặc ghi trùng lệnh trừ tiền.
 - **BG-CB-03 (Quản lý Khách hàng & Tài khoản):** Cung cấp các nghiệp vụ mở hồ sơ khách hàng (Customer CIF), mở tài khoản thanh toán đa tiền tệ, phát hành thẻ ngân hàng.
-- **BG-CB-04 (Quyết toán Giao dịch Tức thời):** Thực thi chuyển tiền nội bộ nguyên tử (Atomic Internal Transfer) theo quy trình 2 pha: Giữ tiền (Funds Reserved) và Quyết toán (Transfer Completed/Failed).
+- **BG-CB-04 (Quyết toán Giao dịch Tức thời & Nhất quán Cuối cùng):** Thực thi chuyển tiền nội bộ an toàn qua điều phối Saga 2 pha: Giữ tiền (Funds Reserved) và Quyết toán/Bù trừ (Settle / Compensate), đảm bảo nguyên tắc 1 transaction chỉ cập nhật 1 aggregate và sẵn sàng tách microservice.
 - **BG-CB-05 (Truy vết & Kiểm toán 100%):** Lưu vết toàn bộ sự kiện tài chính dưới dạng chuỗi sự kiện append-only (Event Sourcing) không thể chỉnh sửa hay xóa bỏ.
 
 ---
@@ -69,32 +68,45 @@ Phân hệ `corebank` trong **Simulation Bank Platform** được xây dựng nh
 
 ## 4. Quy trình Nghiệp vụ Cốt lõi (Core Business Workflows)
 
-### 4.1. Quy trình Chuyển tiền Nội bộ (Internal Transfer Workflow)
+### 4.1. Quy trình Chuyển tiền Nội bộ (Internal Transfer Workflow — Saga Orchestration)
+
+Quy trình chuyển tiền nội bộ được hiện thực hóa theo mô hình **Saga Orchestration** (điều phối qua `TransferSaga`), tuân thủ nghiêm ngặt nguyên tắc **1 transaction chỉ cập nhật 1 Aggregate**:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Client as Money Bank
-    participant CB as Corebank API
-    participant Agg as AccountAggregate (Sender)
-    participant ES as Event Store (Oracle)
-    participant Proj as Projection (Read Model)
-    participant Outbox as Outbox Table
+    actor Client as Money Bank (BFF)
+    participant API as Corebank API
+    participant T as Transfer Aggregate
+    participant Saga as TransferSaga (Orchestrator)
+    participant Src as Account (Source)
+    participant Dest as Account (Destination)
 
-    Client->>CB: POST /api/v1/transfers (fromAccount, toAccount, amount, idempotencyKey)
-    CB->>CB: Kiểm tra Idempotency & Hạn mức
-    CB->>Agg: Nạp Aggregate người gửi từ Snapshots + Events
-    Agg->>Agg: Validate: Trạng thái ACTIVE, Số dư khả dụng >= Số tiền
-    alt Số dư không đủ hoặc Tài khoản bị khóa
-        Agg-->>CB: Từ chối (BusinessException: INSUFFICIENT_FUNDS / ACCOUNT_LOCKED)
-        CB-->>Client: 400 Bad Request / 422 Unprocessable Entity
-    else Hợp lệ
-        Agg->>Agg: Giữ tiền: AvailableBalance -= amount (Reserved)
-        CB->>ES: Lưu sự kiện: FundsReservedEvent
-        CB->>ES: Lưu sự kiện: TransferCompletedEvent (Credit người nhận)
-        CB->>Outbox: Ghi Outbox Message (TransferCompleted)
-        CB->>Proj: Cập nhật Projection (AccountView, TransactionHistoryView)
-        CB-->>Client: 200 OK (TransferResponseDTO: Status = COMPLETED)
+    Client->>API: POST /api/v1/transfers (idempotencyKey)
+    API->>API: Kiểm tra Idempotency & Hạn mức
+    API->>T: Khởi tạo lệnh chuyển tiền [tx1]
+    Note over API,Client: Đợi trạng thái terminal tối đa N giây (hoặc trả 202 PENDING - D1)
+    Saga->>Src: Yêu cầu giữ tiền: reserve(transferId, amount) [tx2]
+    alt Không đủ số dư hoặc Tài khoản nguồn bị khóa
+        Src-->>Saga: ReserveRejected (INSUFFICIENT_FUNDS / FROZEN)
+        Saga->>T: Đánh dấu thất bại: fail(reason)
+        API-->>Client: 422 Unprocessable Entity / 400 Bad Request
+    else Giữ tiền thành công
+        Src-->>Saga: FundsReserved
+        Saga->>T: Cập nhật: markSourceReserved() [tx3]
+        Saga->>Dest: Ghi có tài khoản đích: credit(transferId, amount) [tx4 - Pivot]
+        alt Ghi có thành công (Điểm bản lề - Pivot)
+            Dest-->>Saga: FundsCredited
+            Saga->>T: Cập nhật: markDestinationCredited() [tx5]
+            Saga->>Src: Quyết toán trừ sổ cái: settle(transferId) [tx6 - Retry vô hạn]
+            Saga->>T: Hoàn tất giao dịch: complete() [tx7]
+            API-->>Client: 200 OK (Status = COMPLETED)
+        else Ghi có thất bại (Tài khoản đích đóng/lỗi nghiệp vụ)
+            Dest-->>Saga: CreditRejected
+            Saga->>Src: Bù trừ giải phóng tiền giữ: release(transferId) [Compensating tx]
+            Saga->>T: Đánh dấu thất bại: fail(reason)
+            API-->>Client: 422 Unprocessable Entity (Status = FAILED)
+        end
     end
 ```
 
@@ -151,14 +163,16 @@ $$\sum \text{Debit (Nợ)} = \sum \text{Credit (Có)}$$
   - Thay đổi trạng thái thẻ: `ACTIVE`, `BLOCKED`, `EXPIRED`.
 
 ### 5.4. Nhóm Chuyển tiền & Sổ cái (Transfer & Ledger)
-- **FR-CB-08 (Chuyển tiền nội bộ nguyên tử):**
+- **FR-CB-08 (Chuyển tiền nội bộ qua Saga):**
   - Tiếp nhận lệnh chuyển tiền từ tài khoản nguồn sang tài khoản đích trong cùng hệ thống Corebank.
   - Kiểm tra điều kiện: Tài khoản nguồn và đích tồn tại, trạng thái `ACTIVE`, cùng loại tiền tệ, tài khoản nguồn có `availableBalance >= amount`.
-  - Thực thi ghi nợ/ghi có trong cùng một transaction CSDL nguyên tử (ACID).
-- **FR-CB-09 (Xử lý Idempotency):**
+  - Thực thi điều phối qua Saga Orchestration: Mỗi bước là một transaction độc lập trên một Aggregate duy nhất (`Transfer`, `Account`). Giữ tiền tài khoản nguồn (`reserve`), ghi có tài khoản đích (`credit` - Pivot transaction), và quyết toán trừ sổ cái (`settle`). Tự động bù trừ giải phóng tiền (`release`) nếu bước ghi có thất bại trước điểm pivot.
+- **FR-CB-09 (Xử lý Idempotency & Tự bảo vệ Sổ cái):**
   - Mọi yêu cầu chuyển tiền bắt buộc có header/trường `idempotencyKey`.
-  - Nếu key đã tồn tại và đã xử lý thành công: trả về kết quả trước đó mà không thực thi lại trừ tiền.
-  - Nếu key đang trong quá trình xử lý: trả lỗi `409 Conflict` (Giao dịch đang được xử lý).
+  - Sinh mã giao dịch duy nhất tất định `transferId = UUID v3(sourceAccountId + ":" + idempotencyKey)`.
+  - Nếu key đã tồn tại và thông tin yêu cầu trùng khớp: trả về kết quả trước đó mà không thực thi lại trừ tiền (idempotent replay).
+  - Nếu key đã tồn tại nhưng thông tin yêu cầu bị thay đổi (khác số tiền, tài khoản nhận, tiền tệ): trả về lỗi xung đột `409 Conflict`.
+  - Mọi thao tác Aggregate nội bộ (`reserve`, `credit`, `settle`, `release`) phải mang tính idempotent theo `transferId`.
 - **FR-CB-10 (Truy vấn lịch sử giao dịch):**
   - Cung cấp danh sách các bút toán đã hạch toán của một tài khoản theo thứ tự thời gian giảm dần, hỗ trợ phân trang.
 
@@ -166,21 +180,89 @@ $$\sum \text{Debit (Nợ)} = \sum \text{Credit (Có)}$$
 
 ## 6. Yêu cầu Phi Chức năng (Non-Functional Requirements - NFR)
 
-### 6.1. Hiệu năng & Khả năng Xử lý (Performance & Scale)
+### 6.1. Hiệu năng & Khả năng Mở rộng (Performance & Scalability)
 - **NFR-CB-01 (Throughput):** Hệ thống phải đáp ứng tối thiểu **1,000 TPS** (Transactions Per Second) ghi sổ cái trong điều kiện chịu tải đỉnh.
 - **NFR-CB-02 (Latency SLA):**
   - Thao tác ghi lệnh chuyển tiền (Write/Command): Thời gian phản hồi P95 $\le 100\text{ ms}$, P99 $\le 250\text{ ms}$.
   - Thao tác đọc số dư và lịch sử (Read/Query): Thời gian phản hồi P95 $\le 20\text{ ms}$, P99 $\le 50\text{ ms}$.
+- **NFR-CB-09 (Phân tách Vật lý Ghi/Đọc & Tự động Co giãn Bất đối xứng — K8s CQRS):**
+  - Hệ thống áp dụng chiến lược phân tách vật lý ở hạ tầng Kubernetes thành 2 deployment độc lập:
+    - `corebank-command` (Ghi): Kết nối Primary Write Master DB, duy trì cố định 2–3 Pods nhằm kiểm soát và bảo toàn connection pool cho Master DB.
+    - `corebank-query` (Đọc): Kết nối Read Replica DB, cấu hình Horizontal Pod Autoscaler (HPA) tự động co giãn từ 3 đến 20 Pods dựa trên CPU và lưu lượng truy vấn sao kê/số dư.
+  - Sử dụng Spring Profile (`command`, `query`, `all`) định nghĩa qua hằng số `ProfileConstants` để kích hoạt đúng Controller/Handler trên từng Pod, tuyệt đối không nạp mã lệnh ghi vào Pod Đọc để bảo vệ Read Replica.
+- **NFR-CB-10 (Độ trễ Giới hạn & Chuyển giao Bất đồng bộ Mềm dẻo — Bounded Latency & Async Fallback):**
+  - Endpoint `POST /transfers` duy trì cơ chế chờ đồng bộ tối đa $N$ giây (mặc định $\le 3\text{s}$, cấu hình phù hợp với timeout của dịch vụ gọi BFF) để phản hồi trạng thái kết thúc (`COMPLETED` hoặc `FAILED`).
+  - Nếu quá thời hạn $N$ giây mà Saga chưa hoàn tất, API bắt buộc chuyển giao mềm dẻo bằng mã HTTP `202 Accepted` kèm `status=PENDING` và `transferId`, giải phóng kết nối cho client trong khi Saga tiếp tục xử lý ngầm trong nền.
 
-### 6.2. Toàn vẹn Dữ liệu & Tính Sẵn sàng (Data Integrity & Reliability)
-- **NFR-CB-03 (Zero Data Loss):** Tuyệt đối không cho phép mất mát dữ liệu tài chính trong bất kỳ tình huống sự cố mạng hay sập nguồn máy chủ.
-- **NFR-CB-04 (Chống Double Spending):** Áp dụng cơ chế khóa ở mức CSDL (Optimistic Locking với trường version và Pessimistic row-lock khi hạch toán) đảm bảo không có race condition.
-- **NFR-CB-05 (Availability SLA):** Tính sẵn sàng của dịch vụ đạt tối thiểu **99.99%** Uptime.
+### 6.2. Toàn vẹn Dữ liệu, Độ tin cậy & Khả năng Tự phục hồi (Data Integrity, Reliability & Resilience)
+- **NFR-CB-03 (Bảo toàn Dữ liệu Tuyệt đối & Append-Only Event Store):**
+  - Tuyệt đối không cho phép mất mát bất kỳ sự kiện tài chính nào (Zero Data Loss) trong mọi tình huống sự cố mạng, sập nguồn hoặc restart dịch vụ.
+  - Mọi biến động số dư và trạng thái tài khoản đều được lưu trữ vĩnh viễn dưới dạng sự kiện bất biến (Append-Only) trong bảng `domain_events`.
+- **NFR-CB-04 (Chống Double Spending & Kiểm soát Đồng thời Mức Aggregate):**
+  - Tuân thủ nguyên tắc: Mỗi database transaction chỉ được phép cập nhật duy nhất 1 Aggregate.
+  - Sử dụng Optimistic Locking dựa trên trường `version` của Aggregate kết hợp các thao tác idempotent theo `transferId` (`reserve`, `credit`, `settle`, `release`).
+  - Khi xảy ra xung đột version do nhiều giao dịch đồng thời tác động lên cùng một tài khoản, hệ thống tự động retry với backoff an toàn (tối đa N lần), ngăn chặn triệt để tình trạng tiêu vượt số dư hoặc số dư khả dụng bị âm.
+- **NFR-CB-05 (Availability SLA):**
+  - Tính sẵn sàng của dịch vụ Corebank đạt tối thiểu **99.99%** Uptime hàng năm.
+- **NFR-CB-11 (Độ bền & Khả năng Tự phục hồi của Saga — Saga Durability & Self-Healing):**
+  - Điều phối chuyển tiền liên-aggregate thông qua Saga Orchestration (`TransferSaga`) phải đảm bảo độ bền vững tuyệt đối:
+    - **Điểm bản lề (Pivot Transaction):** Khi thao tác ghi có (`credit`) vào tài khoản nhận thành công, giao dịch bắt buộc chỉ đi tiến (forward retry vô hạn bước `settle` tài khoản nguồn kèm cảnh báo), tuyệt đối không bù trừ ngược để tránh mất tiền.
+    - **Bù trừ tự động (Compensating Transaction):** Nếu thao tác ghi có bị từ chối do vi phạm quy tắc nghiệp vụ, Saga tự động kích hoạt lệnh `release` giải phóng khoản tiền đang hold tại tài khoản nguồn.
+    - **Tự phục hồi sau sự cố (Self-Healing Job):** Tiến trình nền `SagaRecoveryJob` định kỳ quét các giao dịch ở trạng thái non-terminal vượt quá ngưỡng thời gian chờ (`timeout`) để kích hoạt lại bước kế tiếp an toàn, bảo đảm không có giao dịch nào bị treo vô hạn kể cả khi Pod bị crash giữa chừng.
+- **NFR-CB-12 (Tự bảo vệ Sổ cái & Idempotency Độc lập Phía Corebank):**
+  - Corebank tự chịu trách nhiệm chống trùng lặp giao dịch mà không phụ thuộc vào BFF/Client:
+    - Mã định danh giao dịch `transferId` được sinh tất định: `transferId = UUID v3(sourceAccountId + ":" + idempotencyKey)`.
+    - Trùng `idempotencyKey` + cùng nội dung yêu cầu: Trả về kết quả trước đó trong $\le 50\text{ ms}$, không sinh thêm sự kiện hay biến động số dư mới.
+    - Trùng `idempotencyKey` + khác nội dung yêu cầu (sai lệch số tiền, tài khoản nhận, tiền tệ): Bắt buộc từ chối và phản hồi lỗi xung đột nghiệp vụ `409 Conflict`.
+- **NFR-CB-13 (Loại trừ Hoàn toàn Rủi ro từ Độ trễ Bản sao — Zero Replication Lag Impact):**
+  - 100% các quyết định nghiệp vụ tài chính, thẩm định số dư khả dụng, hold tiền và ghi nhận sự kiện chuyển tiền bắt buộc thực thi trực tiếp trên Write Master DB.
+  - Độ trễ sao chép dữ liệu (Replication Lag) giữa Write Master DB và Read Replica DB tuyệt đối không được phép gây sai lệch hoặc ảnh hưởng đến tính đúng đắn của sổ cái.
+- **NFR-CB-14 (Cô lập Lỗi & Bảo toàn Tài nguyên Giao dịch — Fault & Resource Isolation):**
+  - Sự cố quá tải do các truy vấn báo cáo/sao kê lịch sử nặng, cạn kiệt bộ nhớ hoặc crash Pod ở phân hệ Đọc (`corebank-query`) hoàn toàn bị cô lập, không ảnh hưởng đến tính sẵn sàng và hiệu năng của phân hệ Ghi (`corebank-command`).
 
-### 6.3. Bảo mật & Kiểm toán (Security & Auditability)
-- **NFR-CB-06 (Mạng Nội bộ Cách ly):** `corebank` chỉ tiếp nhận request từ dải mạng nội bộ (Internal K8s Service / Private VPC), không cấp quyền truy cập công khai từ bên ngoài.
-- **NFR-CB-07 (RBAC & Phân quyền):** Áp dụng phân quyền chặt chẽ với `@CoreBankAuthorization` kiểm tra quyền theo vai trò dịch vụ gọi đến.
-- **NFR-CB-08 (Audit Trail):** Mọi sự kiện phát sinh trên sổ cái đều được ghi nhận vào Event Store dưới dạng bản ghi bất biến (Immutable Events).
+### 6.3. Kiến trúc, Ranh giới Module & Tính Độc lập Domain (Architectural Fitness & Modularity)
+- **NFR-CB-15 (Ranh giới Bounded Context & Tính Thuần khiết của Domain — Domain Purity & ArchUnit):**
+  - Lớp `domain` của mọi Bounded Context (`account`, `transfer`, `card`, `customer`, `access`) phải giữ trạng thái thuần khiết 100%, không phụ thuộc vào bất kỳ framework kỹ thuật nào (không import Spring, JPA/Hibernate, Jackson, hay `common-service`).
+  - Giao tiếp giữa các Bounded Context chỉ được phép thông qua Application Ports/APIs và Events; cấm tham chiếu chéo Entity Domain hoặc truy vấn trực tiếp bảng của Bounded Context khác.
+  - Tham chiếu giữa các Aggregate Root khác nhau chỉ thực hiện bằng ID (`AccountId`, `TransferId`, `CustomerId`), không sử dụng quan hệ đối tượng ORM (`@ManyToOne`).
+  - Toàn bộ các quy tắc ranh giới này bắt buộc được kiểm chứng tự động bằng công cụ kiểm thử kiến trúc (ArchUnit) trong pipeline CI/CD, ngăn chặn mọi mã nguồn vi phạm ranh giới.
+- **NFR-CB-16 (Phân định Rạch ròi Domain Event vs Integration Event):**
+  - Tách biệt rõ ràng giữa Sự kiện Domain nội bộ (Domain Events lưu tại `domain_events`, phục vụ khôi phục trạng thái Aggregate) và Sự kiện Tích hợp (Integration Events đẩy ra ngoài qua Transactional Outbox sang Kafka):
+    - Không rò rỉ payload thô của Domain Event ra hệ thống bên ngoài.
+    - Integration Event phải tuân thủ hợp đồng dữ liệu ổn định, tường minh và có gắn kèm số phiên bản schema (`schemaVersion`).
+- **NFR-CB-17 (Tính Toàn vẹn của Snapshot Trạng thái — Complete State Snapshotting):**
+  - Bản snapshot của Aggregate Root phải serialize đầy đủ 100% trạng thái hoạt động (bao gồm cả danh sách các khoản giữ tiền `holds` đang hiệu lực, danh sách `creditedTransfers`), đảm bảo việc tái tạo Aggregate từ snapshot kết hợp với các event mới luôn chính xác, không làm thất thoát trạng thái nghiệp vụ.
+
+### 6.4. Bảo mật, Kiểm toán & Tuân thủ Pháp lý (Security, Auditability & Compliance)
+- **NFR-CB-06 (Mạng Nội bộ Cách ly — Network Isolation):**
+  - `corebank` chỉ tiếp nhận request từ dải mạng nội bộ (Internal K8s Service / Private VPC / Service Mesh), không cấp quyền truy cập công khai từ bên ngoài Internet.
+- **NFR-CB-07 (RBAC & Phân quyền Dịch vụ Chặt chẽ):**
+  - Áp dụng phân quyền chặt chẽ với `@CoreBankAuthorization` kiểm tra quyền theo vai trò dịch vụ gọi đến (`ROLE_SERVICE_MONEYBANK`, `ROLE_SERVICE_CMS`, `ROLE_SERVICE_PROFILE`).
+- **NFR-CB-08 (Audit Trail & Không thể Chối bỏ):**
+  - Mọi sự kiện phát sinh trên sổ cái đều được ghi nhận vào Event Store dưới dạng bản ghi bất biến (Immutable Events) kèm định danh thời gian chính xác và actor/service khởi tạo, phục vụ kiểm toán độc lập 100%.
+- **NFR-CB-20 (Tuân thủ Bảo vệ Dữ liệu Cá nhân Nhạy cảm — Nghị định 13/2023/NĐ-CP):**
+  - Tuân thủ phân loại dữ liệu ngân hàng (thông tin định danh, số tài khoản, tiền gửi, số dư, lịch sử giao dịch) là **Dữ liệu cá nhân nhạy cảm** (Khoản 4 Điều 2):
+    - **Che mờ Dữ liệu (Data Masking) khi trả về người dùng và API:** Số CCCD/Hộ chiếu chỉ hiển thị dạng `012345****01`; số thẻ ngân hàng (PAN) chỉ hiển thị BIN và 4 số cuối dạng `4111-22XX-XXXX-3344`; tuyệt đối **KHÔNG lưu trữ dạng plain text và KHÔNG trả về mã bí mật CVV/PIN** trong bất kỳ response DTO nào.
+    - **Tối thiểu hóa Dữ liệu (Data Minimization - Điều 3):** API chỉ trả về các trường dữ liệu thực sự cần thiết cho mục đích nghiệp vụ; response của API chuyển tiền `POST /transfers` tuyệt đối không phơi bày số dư của tài khoản người nhận.
+    - **Chống rò rỉ Dữ liệu trên Nhật ký (Zero Data Leakage in Logs - Điều 26):** Tuyệt đối cấm in plain text số thẻ đầy đủ, CVV, CCCD, mật khẩu/PIN, số dư chi tiết của khách hàng vào Log files, MDC context hay distributed tracing traces.
+- **NFR-CB-21 (Tuân thủ Hệ thống Thông tin Quản lý & An toàn Dữ liệu Sổ cái — Thông tư 13/2018/TT-NHNN):**
+  - Tuân thủ quy định về Hệ thống thông tin quản lý (MIS) và quản trị rủi ro CNTT (Điều 50, 51, 52, 53):
+    - **Tính toàn vẹn và hợp lệ của dữ liệu (Data Integrity):** Thiết lập cơ chế kiểm soát dữ liệu đầu vào (Input validation), xử lý kiểm toán kép và dữ liệu đầu ra; bảo đảm dữ liệu sổ cái phản ánh chính xác, đầy đủ và tức thời mọi biến động tài chính.
+    - **An toàn cơ chế trao đổi thông tin:** Toàn bộ dữ liệu trao đổi giữa Corebank và các service nội bộ (`money-bank`, `cms`, `paygate`) phải được xác thực danh tính qua mTLS / JWT Service Token và mã hóa đường truyền nhằm chống giả mạo hoặc can thiệp trên đường truyền mạng nội bộ.
+    - **Tính liên tục & Sao lưu phục hồi:** Cơ sở dữ liệu Event Store và Projection Views phải thiết lập cơ chế sao lưu tự động (Daily backup + WAL archiving) phục vụ kịch bản khôi phục sau thảm họa (Disaster Recovery).
+
+### 6.5. Vận hành, Khả năng Quan sát & Vòng đời Ứng dụng (Observability & Container Lifecycle)
+- **NFR-CB-18 (Khả năng Quan sát Chuyên biệt cho Saga & Xử lý Đồng thời — Saga Observability & Real-time Alerting):**
+  - Hệ thống phải xuất bản các số liệu đo lường chi tiết (Micrometer/Prometheus) phục vụ giám sát vận hành:
+    - `corebank_saga_step_total{step, status}`: Đếm số lượng và trạng thái các bước thực thi saga.
+    - `corebank_saga_stuck_total`: Đếm số lượng giao dịch bị kẹt ở trạng thái non-terminal quá ngưỡng thời gian.
+    - `corebank_concurrency_retries_total`: Đếm số lần retry do xung đột phiên bản Optimistic Lock.
+  - Thiết lập cảnh báo thời gian thực (Alerting) tức thì khi có giao dịch bị treo quá ngưỡng thời gian $T_{\text{stuck}}$ hoặc khi bước quyết toán (`settle`) sau điểm pivot retry thất bại liên tục.
+- **NFR-CB-19 (Tắt Dịch vụ Mềm dẻo & Tối ưu Tài nguyên Container — Graceful Shutdown & Container Lifecycle):**
+  - Container ứng dụng phải tiếp nhận và xử lý tín hiệu `SIGTERM` từ Kubernetes orchestration để thực hiện Graceful Shutdown:
+    - Hoàn tất các transaction và saga step đang dở dang trước khi dừng hoàn toàn.
+    - Giải phóng an toàn các connection pool của HikariCP.
+    - Tối ưu hóa JVM cho môi trường container (`-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0`).
 
 ---
 
@@ -193,3 +275,9 @@ $$\sum \text{Debit (Nợ)} = \sum \text{Credit (Có)}$$
 | **AC-CB-03** | Bắn đồng thời 50 request chuyển tiền từ cùng 1 tài khoản với số dư chỉ đủ cho 1 giao dịch: Duy nhất 1 giao dịch thành công, 49 giao dịch còn lại báo lỗi thiếu số dư, không bị âm tiền. | PASS |
 | **AC-CB-04** | Gửi lại cùng 1 `idempotencyKey` với payload giống hệt: Hệ thống trả về kết quả cũ trong 50ms, không phát sinh bút toán mới. | PASS |
 | **AC-CB-05** | Tài khoản bị `LOCKED`: Mọi lệnh chuyển tiền từ tài khoản này lập tức bị từ chối với mã lỗi phù hợp. | PASS |
+| **AC-CB-06** | **Tự phục hồi Saga sau sự cố:** Giả lập tắt Pod bất ngờ khi giao dịch đang ở bước `DESTINATION_CREDITED` (đã ghi có nhưng chưa kịp `settle` tài khoản nguồn): `SagaRecoveryJob` tự động phát hiện và tiếp tục xử lý lệnh chuyển tiền đến trạng thái cuối cùng (`COMPLETED`), số dư sổ cái và khả dụng của tài khoản nguồn được quyết toán chính xác, không thất thoát tiền. | PASS |
+| **AC-CB-07** | **Phát hiện Xung đột Idempotency khi sai lệch thông tin:** Gửi lại cùng `idempotencyKey` nhưng thay đổi số tiền hoặc tài khoản đích: Hệ thống phản hồi ngay lập tức lỗi `409 Conflict`, không thực thi trừ tiền và không làm sai lệch giao dịch trước đó. | PASS |
+| **AC-CB-08** | **Phân tách & Cô lập tải Ghi/Đọc:** Bắn tải đọc liên tục 5,000 QPS vào cụm `corebank-query`: Pod Query tự động scale theo HPA; cụm `corebank-command` vẫn đáp ứng SLA ghi lệnh chuyển tiền P95 $\le 100\text{ ms}$, connection pool của Master DB không bị cạn kiệt. | PASS |
+| **AC-CB-09** | **Chuyển giao Asynchronous mềm dẻo khi quá timeout:** Giả lập độ trễ mạng khiến điều phối saga vượt quá $N$ giây (ngưỡng timeout cấu hình): API `POST /transfers` phản hồi HTTP `202 Accepted` kèm `status=PENDING` và `transferId`; lệnh chuyển tiền tiếp tục hoàn tất ngầm trong nền đạt `COMPLETED`. | PASS |
+| **AC-CB-10** | **Kiểm chứng Ranh giới Kiến trúc ArchUnit:** Chạy bộ kiểm thử kiến trúc ArchUnit trong CI/CD: Xác nhận 100% package `domain` không có phụ thuộc hạ tầng (Spring, JPA, Jackson), không có Bounded Context nào vi phạm import chéo domain của nhau. | PASS |
+| **AC-CB-11** | **Che mờ Dữ liệu & Tuân thủ Bảo vệ Dữ liệu:** Gọi API truy vấn khách hàng, thẻ và chuyển tiền: Số CCCD được mask `012345****01`, số thẻ được mask `4111-22XX-XXXX-3344`, response chuyển tiền không chứa số dư tài khoản nhận; log hệ thống không chứa mã CVV/CCCD/PIN plain text. | PASS |

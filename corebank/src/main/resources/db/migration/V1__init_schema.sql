@@ -186,8 +186,6 @@ CREATE TABLE domain_events (
     CONSTRAINT uq_aggregate_version UNIQUE (aggregate_id, version)
 );
 
-CREATE INDEX ix_domain_events_aggregate ON domain_events (aggregate_id, version ASC);
-
 -- Snapshot: lưu trạng thái tổng hợp sau mỗi 50 sự kiện.
 -- Khi load aggregate, chỉ cần replay từ version snapshot trở đi.
 CREATE TABLE aggregate_snapshots (

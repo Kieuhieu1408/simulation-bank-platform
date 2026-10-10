@@ -26,5 +26,7 @@ RUN chown spring:spring app.jar
 
 USER spring
 
+ENV SPRING_PROFILES_ACTIVE=all
+
 EXPOSE 8180
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
