@@ -1,6 +1,6 @@
 package com.hieu.corebank.security;
 
-import com.hieu.corebank.constant.ActionType;
+import com.hieu.common.constant.ActionType;
 import com.hieu.corebank.domain.Permission;
 import com.hieu.corebank.domain.Role;
 import com.hieu.corebank.repository.RoleRepository;

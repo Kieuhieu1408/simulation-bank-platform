@@ -22,6 +22,13 @@ public final class LogFields {
     /** Header nhận correlation id từ trusted edge (SRD mục 13.1). */
     public static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
 
+    // --- Log Event Names ---
+    public static final String EVENT_REQUEST_REJECTED = "REQUEST_REJECTED";
+    public static final String EVENT_REQUEST_VALIDATION_FAILED = "REQUEST_VALIDATION_FAILED";
+    public static final String EVENT_AUTHORIZATION_DENIED = "AUTHORIZATION_DENIED";
+    public static final String EVENT_AUTHENTICATION_FAILED = "AUTHENTICATION_FAILED";
+    public static final String EVENT_UNHANDLED_ERROR = "UNHANDLED_ERROR";
+
     private LogFields() {
     }
 }

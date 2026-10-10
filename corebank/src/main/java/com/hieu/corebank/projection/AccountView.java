@@ -1,6 +1,6 @@
 package com.hieu.corebank.projection;
 
-import com.hieu.corebank.constant.AccountStatus;
+import com.hieu.common.constant.AccountStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

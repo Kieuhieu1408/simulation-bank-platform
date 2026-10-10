@@ -1,6 +1,6 @@
 package com.hieu.corebank.domain;
 
-import com.hieu.corebank.constant.CardStatus;
+import com.hieu.common.constant.CardStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 

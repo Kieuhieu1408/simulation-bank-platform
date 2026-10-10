@@ -97,7 +97,7 @@ public class TransferCommandHandler implements CommandHandler<TransferRequestDTO
 
         return TransferResponseDTO.builder()
                 .transactionId(transferId)
-                .status(com.hieu.corebank.constant.TransactionStatus.SUCCESS)
+                .status(com.hieu.common.constant.TransactionStatus.SUCCESS)
                 .sourceAccountId(request.getSourceAccountId())
                 .destinationAccountId(request.getDestinationAccountId())
                 .amount(request.getAmount())

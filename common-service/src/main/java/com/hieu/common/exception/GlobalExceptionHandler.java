@@ -37,7 +37,7 @@ public class GlobalExceptionHandler {
         // Lỗi nghiệp vụ là kết quả hợp lệ của hệ thống nên log ở mức WARN, không
         // kèm stack trace để không tạo nhiễu cho alert.
         log.warn("eventName={} {}={} {}={} reason={}",
-                "REQUEST_REJECTED",
+                LogFields.EVENT_REQUEST_REJECTED,
                 LogFields.ERROR_CODE, errorCode.code(),
                 LogFields.ERROR_CATEGORY, errorCode.category(),
                 exception.getMessage());
@@ -57,7 +57,7 @@ public class GlobalExceptionHandler {
                         fieldError.getDefaultMessage()))
                 .toList();
         log.warn("eventName={} {}={} fieldCount={}",
-                "REQUEST_VALIDATION_FAILED",
+                LogFields.EVENT_REQUEST_VALIDATION_FAILED,
                 LogFields.ERROR_CODE, ErrorCode.REQUEST_INVALID.code(),
                 details.size());
         return ResponseEntity.status(ErrorCode.REQUEST_INVALID.httpStatus())
@@ -73,7 +73,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({AuthorizationDeniedException.class, AccessDeniedException.class})
     public ResponseEntity<ApiErrorResponse> handleAuthorizationDenied(RuntimeException exception) {
         log.warn("eventName={} {}={}",
-                "AUTHORIZATION_DENIED",
+                LogFields.EVENT_AUTHORIZATION_DENIED,
                 LogFields.ERROR_CODE, ErrorCode.FORBIDDEN.code());
         return respond(ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.safeMessage());
     }
@@ -82,7 +82,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiErrorResponse> handleAuthentication(AuthenticationException exception) {
         log.warn("eventName={} {}={}",
-                "AUTHENTICATION_FAILED",
+                LogFields.EVENT_AUTHENTICATION_FAILED,
                 LogFields.ERROR_CODE, ErrorCode.UNAUTHENTICATED.code());
         return respond(ErrorCode.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED.safeMessage());
     }
@@ -94,7 +94,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception) {
         log.error("eventName={} {}={}",
-                "UNHANDLED_ERROR",
+                LogFields.EVENT_UNHANDLED_ERROR,
                 LogFields.ERROR_CODE, ErrorCode.INTERNAL_ERROR.code(),
                 exception);
         return respond(ErrorCode.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR.safeMessage());

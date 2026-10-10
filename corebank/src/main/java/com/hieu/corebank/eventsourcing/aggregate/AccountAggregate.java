@@ -1,6 +1,6 @@
 package com.hieu.corebank.eventsourcing.aggregate;
 
-import com.hieu.corebank.constant.AccountStatus;
+import com.hieu.common.constant.AccountStatus;
 import com.hieu.corebank.eventsourcing.event.*;
 import com.hieu.corebank.exception.BusinessException;
 

@@ -68,7 +68,7 @@ public class CreateAccountCommandHandler implements CommandHandler<AccountCreate
                 .cifNumber(customer.getCifNumber())
                 .currency(request.getCurrency().toUpperCase())
                 .balance(initialBalance)
-                .status(com.hieu.corebank.constant.AccountStatus.ACTIVE)
+                .status(com.hieu.common.constant.AccountStatus.ACTIVE)
                 .createdAt(java.time.Instant.now())
                 .build();
     }

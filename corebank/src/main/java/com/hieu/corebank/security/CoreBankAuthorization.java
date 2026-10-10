@@ -1,6 +1,6 @@
 package com.hieu.corebank.security;
 
-import com.hieu.corebank.constant.ActionType;
+import com.hieu.common.constant.ActionType;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

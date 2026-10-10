@@ -1,6 +1,6 @@
 package com.hieu.corebank.repository;
 
-import com.hieu.corebank.constant.ActionType;
+import com.hieu.common.constant.ActionType;
 import com.hieu.corebank.domain.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;

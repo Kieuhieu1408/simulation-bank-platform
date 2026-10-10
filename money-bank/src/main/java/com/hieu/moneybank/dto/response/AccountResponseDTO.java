@@ -1,6 +1,6 @@
 package com.hieu.moneybank.dto.response;
 
-import com.hieu.moneybank.constant.AccountStatus;
+import com.hieu.common.constant.AccountStatus;
 import com.hieu.moneybank.domain.Account;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

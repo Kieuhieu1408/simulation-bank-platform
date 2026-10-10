@@ -1,6 +1,6 @@
 package com.hieu.corebank.domain;
 
-import com.hieu.corebank.constant.ActionType;
+import com.hieu.common.constant.ActionType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

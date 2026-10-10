@@ -1,6 +1,6 @@
 package com.hieu.moneybank.domain;
 
-import com.hieu.moneybank.constant.ActionType;
+import com.hieu.common.constant.ActionType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

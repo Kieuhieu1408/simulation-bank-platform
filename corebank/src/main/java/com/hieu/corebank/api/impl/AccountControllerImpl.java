@@ -2,7 +2,7 @@ package com.hieu.corebank.api.impl;
 
 import com.hieu.corebank.api.AccountController;
 import com.hieu.corebank.api.BaseController;
-import com.hieu.corebank.constant.ActionType;
+import com.hieu.common.constant.ActionType;
 import com.hieu.corebank.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.dto.request.IssueCardRequestDTO;
 import com.hieu.corebank.dto.request.TransactionHistoryItemDTO;

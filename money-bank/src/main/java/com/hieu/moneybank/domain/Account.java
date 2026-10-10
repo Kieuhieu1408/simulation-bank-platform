@@ -1,6 +1,6 @@
 package com.hieu.moneybank.domain;
 
-import com.hieu.moneybank.constant.AccountStatus;
+import com.hieu.common.constant.AccountStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 

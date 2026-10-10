@@ -1,8 +1,8 @@
 package com.hieu.moneybank.config;
 
 import com.hieu.common.cqrs.Dispatcher;
-import com.hieu.moneybank.constant.ActionType;
-import com.hieu.moneybank.constant.UserStatus;
+import com.hieu.common.constant.ActionType;
+import com.hieu.common.constant.UserStatus;
 import com.hieu.moneybank.domain.Permission;
 import com.hieu.moneybank.domain.Role;
 import com.hieu.moneybank.domain.User;
