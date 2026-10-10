@@ -1,6 +1,6 @@
 package com.hieu.corebank.eventsourcing.store;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.hieu.corebank.eventsourcing.event.DomainEvent;
 import jakarta.persistence.*;
 import lombok.Getter;

@@ -188,6 +188,8 @@ services:
       DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
       DB_USERNAME: corebank
       DB_PASSWORD: corebank_demo
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
       KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/simulation-bank
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
       OTEL_LOGS_EXPORTER: otlp
@@ -196,6 +198,8 @@ services:
       - "8180:8180"       # host:8180 → corebank container:8180
     depends_on:
       oracle:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       keycloak:
         condition: service_healthy

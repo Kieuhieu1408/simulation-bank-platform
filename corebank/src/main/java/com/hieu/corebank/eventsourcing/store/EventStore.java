@@ -1,13 +1,12 @@
 package com.hieu.corebank.eventsourcing.store;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.hieu.corebank.eventsourcing.aggregate.AccountAggregate;
 import com.hieu.corebank.eventsourcing.event.*;
 import com.hieu.corebank.eventsourcing.snapshot.AggregateSnapshot;
 import com.hieu.corebank.eventsourcing.snapshot.SnapshotRepository;
 import com.hieu.common.outbox.OutboxRecorder;
 import com.hieu.corebank.exception.NotFoundException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -32,13 +31,26 @@ import java.util.Optional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EventStore {
 
     private final DomainEventRepository eventRepository;
     private final SnapshotRepository    snapshotRepository;
     private final OutboxRecorder        outboxRecorder;
     private final ObjectMapper          objectMapper;
+
+    public EventStore(DomainEventRepository eventRepository,
+                      SnapshotRepository snapshotRepository,
+                      OutboxRecorder outboxRecorder,
+                      ObjectMapper objectMapper) {
+        this.eventRepository = eventRepository;
+        this.snapshotRepository = snapshotRepository;
+        this.outboxRecorder = outboxRecorder;
+        this.objectMapper = objectMapper.rebuild()
+                .changeDefaultVisibility(vc -> vc
+                        .withFieldVisibility(com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY)
+                        .withGetterVisibility(com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY))
+                .build();
+    }
 
     // =========================================================================
     // Load — tái tạo Aggregate từ lịch sử Event
@@ -66,9 +78,7 @@ public class EventStore {
         List<DomainEvent> history = new ArrayList<>();
 
         // Nếu có snapshot thì rebuild base state trước
-        if (snapshot.isPresent()) {
-            history.addAll(deserializeSnapshot(snapshot.get()));
-        }
+        snapshot.ifPresent(aggregateSnapshot -> history.addAll(deserializeSnapshot(aggregateSnapshot)));
 
         // Append các event mới hơn snapshot
         for (DomainEventRecord record : records) {

@@ -26,6 +26,7 @@ public class DemoDataInitializer {
 
     @Bean
     CommandLineRunner demoData(
+            com.hieu.corebank.repository.CustomerRepository customerRepository,
             AccountRepository accountRepository, 
             UserRepository userRepository,
             RoleRepository roleRepository,
@@ -62,7 +63,7 @@ public class DemoDataInitializer {
             }
 
             // Seed Business data
-            if (accountRepository.count() == 0) {
+            if (customerRepository.count() == 0) {
                 dispatcher.dispatch(new CustomerCreateRequestDTO("CIF00000001"));
                 dispatcher.dispatch(new CustomerCreateRequestDTO("CIF00000002"));
 
