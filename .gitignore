@@ -31,21 +31,44 @@ build/
 *.ear
 .mvn/wrapper/maven-wrapper.jar
 
-# Logs
+# Logs and Dumps
 *.log
 logs/
+*.hprof
+hs_err_pid*.log
 
-# Temporary / Scratch
+# Temporary / Scratch & Notes
 tmp/
 temp/
 *.tmp
+*plan.md
+plan.md
 
-#AI config
+# AI config
 .claude/
 .gemini/
+
+# Environment Variables & Secrets
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# Runtime Configurations & State
+config/keycloak/*.json
+config/vault/vault-keys.json
+config/vault/*.token
 
 # K8s and Helm runtime files
 k8s-kompose/
 .helmfile/
 .helm/
 *.lock
+kubeconfig
+*.kubeconfig
+.terraform/
+*.tfstate*
