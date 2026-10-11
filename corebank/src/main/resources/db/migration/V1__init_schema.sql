@@ -25,6 +25,13 @@ CREATE SEQUENCE account_number_seq
     NOCACHE
     NOCYCLE;
 
+-- CIF sequence (8 digits: 00000001 - 99999999)
+CREATE SEQUENCE cif_seq
+    START WITH 1
+    INCREMENT BY 1
+    NOCACHE
+    NOCYCLE;
+
 -- Bank cards
 CREATE TABLE bank_cards (
     id          VARCHAR2(36)  NOT NULL,

@@ -25,11 +25,20 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/simulation-bank}
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   jackson:
     time-zone: UTC
 
 server:
   port: 8180
+  shutdown: graceful
+
+corebank:
+  transfer:
+    sync-timeout-seconds: 3
+    stuck-threshold-seconds: 30
+    recovery-interval-ms: 10000
 
 management:
   endpoints:

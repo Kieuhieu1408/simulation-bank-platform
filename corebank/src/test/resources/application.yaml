@@ -16,3 +16,9 @@ money-bank:
     audience: test-audience
     issuer: test-issuer
     jwkSetUri: http://localhost:8080/certs
+
+corebank:
+  transfer:
+    sync-timeout-seconds: 3
+    stuck-threshold-seconds: 30
+    recovery-interval-ms: 60000

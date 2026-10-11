@@ -5,7 +5,7 @@ metadata:
   namespace: sim-bank
 spec:
   selector:
-    app: corebank
+    app: corebank-command
   ports:
     - protocol: TCP
       port: 8180

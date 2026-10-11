@@ -6,7 +6,10 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
+import org.springframework.scheduling.annotation.EnableScheduling;
+
 @SpringBootApplication
+@EnableScheduling
 @ComponentScan(basePackages = {"com.hieu.corebank", "com.hieu.common"})
 @EntityScan(basePackages = {"com.hieu.corebank", "com.hieu.common"})
 @EnableJpaRepositories(basePackages = {"com.hieu.corebank", "com.hieu.common"})

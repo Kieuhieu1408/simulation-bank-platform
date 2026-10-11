@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: corebank-query
+  namespace: sim-bank
+  labels:
+    app: corebank-query
+    tier: query
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: corebank-query
+  template:
+    metadata:
+      labels:
+        app: corebank-query
+        tier: query
+    spec:
+      containers:
+        - name: corebank-query
+          image: harbor.sim-bank.local/sim-bank/corebank:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8180
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "query"
+            - name: DB_URL
+              value: "jdbc:oracle:thin:@oracle-db-replica:1521/FREEPDB1"
+          envFrom:
+            - configMapRef:
+                name: sim-bank-common
+            - secretRef:
+                name: sim-bank-secret
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8180
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8180
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: corebank-command
+  namespace: sim-bank
+  labels:
+    app: corebank-command
+    tier: command
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: corebank-command
+  template:
+    metadata:
+      labels:
+        app: corebank-command
+        tier: command
+    spec:
+      containers:
+        - name: corebank-command
+          image: harbor.sim-bank.local/sim-bank/corebank:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8180
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "command"
+            - name: DB_URL
+              value: "jdbc:oracle:thin:@oracle-db:1521/FREEPDB1"
+          envFrom:
+            - configMapRef:
+                name: sim-bank-common
+            - secretRef:
+                name: sim-bank-secret
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8180
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8180
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]

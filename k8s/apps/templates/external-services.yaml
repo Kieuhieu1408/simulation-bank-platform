@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle-db
+  namespace: sim-bank
+spec:
+  type: ExternalName
+  externalName: host.docker.internal
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle-db-replica
+  namespace: sim-bank
+spec:
+  type: ExternalName
+  externalName: host.docker.internal

@@ -27,6 +27,7 @@ RUN chown spring:spring app.jar
 USER spring
 
 ENV SPRING_PROFILES_ACTIVE=all
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
 
 EXPOSE 8180
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
