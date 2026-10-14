@@ -1,143 +1,291 @@
-# Corebank
+# Corebank Service
 
-Corebank là service trung tâm của `simulation-bank-platform`, chịu trách nhiệm lưu trữ tài khoản thanh toán, thẻ, số dư và lịch sử giao dịch. Đây là bản mô phỏng phục vụ học tập; không xử lý dữ liệu ngân hàng thật.
+Corebank là phân hệ sổ cái ngân hàng trung tâm (Core Ledger Service) của `simulation-bank-platform`, chịu trách nhiệm lưu trữ tài khoản thanh toán, thẻ, số dư và lịch sử giao dịch. Đây là nguồn chân lý duy nhất (Single Source of Truth) trong hệ thống mô phỏng phục vụ nghiên cứu và phát triển kiến trúc tài chính ngân hàng hiện đại (Domain-Driven Design, Event Sourcing, Saga Orchestration, CQRS).
 
 ## Tài liệu Dự án
-- **[BRD (Business Requirements Document)](docs/brd.md):** Yêu cầu nghiệp vụ, tính toàn vẹn sổ cái và quy tắc kế toán kép.
-- **[HLD (High-Level Design)](docs/hld.md):** Thiết kế kiến trúc tổng thể, mô hình CQRS, Event Sourcing và kiểm soát đồng thời.
-- **[SRD (System Requirements Document)](docs/srd.md):** Đặc tả kỹ thuật chi tiết, schema CSDL Oracle và API endpoints.
+- **[BRD (Business Requirements Document)](docs/brd.md):** Yêu cầu nghiệp vụ, tính toàn vẹn sổ cái, nguyên tắc kế toán kép và tiêu chí nghiệm thu.
+- **[HLD (High-Level Design)](docs/hld.md):** Thiết kế kiến trúc tổng thể, mô hình CQRS vật lý trên K8s, Event Sourcing và điều phối Saga.
+- **[SRD (System Requirements Document)](docs/srd.md):** Đặc tả kỹ thuật chi tiết, schema CSDL Oracle, API endpoints và phân tầng thẩm định (4-Level Validation).
+- **[Kế hoạch Chuyển đổi (Plan)](docs/plan.md):** Lộ trình 7 giai đoạn chuyển đổi sang kiến trúc DDD & Saga đã nghiệm thu.
 
-## Phạm vi chức năng MVP
+## Phạm vi Chức năng
+- **Quản lý Hồ sơ Khách hàng (Customer CIF):** Tạo CIF 8 số tự động hoặc chỉ định, lưu trữ thông tin CCCD, Họ tên, SĐT, Email với ràng buộc duy nhất chống trùng lặp.
+- **Quản lý Tài khoản Thanh toán (Account):** Mở tài khoản đa tiền tệ, theo dõi Số dư sổ cái (`ledgerBalance`), Số dư khả dụng (`availableBalance`) và các khoản giữ tiền (`holds`).
+- **Quản lý Thẻ (Card):** Phát hành thẻ thanh toán liên kết tài khoản, che mờ số thẻ (Masking) chuẩn PCI/Nghị định 13/2023/NĐ-CP, tuyệt đối **không lưu trữ và không trả về mã CVV**.
+- **Chuyển tiền Nội bộ (Transfer Saga):** Điều phối chuyển tiền qua Saga Orchestration 2 pha (Reserve → Credit [Pivot] → Settle), tự động bù trừ nếu lỗi trước pivot, tự phục hồi sau sự cố qua `SagaRecoveryJob`.
+- **Tự bảo vệ Sổ cái (Zero-Trust Idempotency):** Sinh `transferId = UUID v3(sourceAccountId + ":" + idempotencyKey)` tất định; phát hiện gửi lại trùng hash thì replay kết quả trong $\le 50\text{ms}$; nếu đổi nội dung thì phản hồi lỗi HTTP `409 Conflict`.
+- **Tra cứu Số dư & Lịch sử Giao dịch:** Tra cứu số dư tức thời và danh sách giao dịch qua Read Projections (`account_view`, `transfer_view`, `transaction_history_view`).
 
-- Tạo và tra cứu tài khoản thanh toán.
-- Tạo và tra cứu thẻ mô phỏng gắn với tài khoản.
-- Tra cứu số dư.
-- Chuyển tiền nội bộ giữa hai tài khoản.
-- Tra cứu lịch sử giao dịch.
-- Kiểm tra trạng thái service.
-
-## API dự kiến
+## Đặc tả API
 
 Base URL: `/api/v1`
 
-### Tài khoản
+### 1. Khách hàng (Customer)
 
-`POST /customers` — tạo CIF, mã định danh duy nhất của khách hàng.
+#### `POST /api/v1/customers`
+Tạo hồ sơ khách hàng mới và sinh CIF.
+- **Request Body mẫu:**
+  ```json
+  {
+    "fullName": "NGUYEN VAN A",
+    "nationalId": "012345678901",
+    "phoneNumber": "0987654321",
+    "email": "nguyenvana@example.com",
+    "cifNumber": "CIF00000003"
+  }
+  ```
+  *(Ghi chú: `cifNumber` là tuỳ chọn; nếu không truyền hệ thống sẽ tự động cấp mã CIF 8 số tự tăng).*
+- **Response 201 Created:**
+  ```json
+  {
+    "cifNumber": "00000003",
+    "fullName": "NGUYEN VAN A",
+    "nationalId": "012345****01",
+    "phoneNumber": "0987654321",
+    "email": "nguyenvana@example.com",
+    "createdAt": "2026-10-14T10:00:00Z"
+  }
+  ```
+  *(CCCD tự động được che mờ dạng `012345****01` tuân thủ Nghị định 13/2023/NĐ-CP).*
 
-`POST /accounts` — tạo tài khoản thanh toán gắn với một CIF đã có.
+#### `GET /api/v1/customers/{cifNumber}`
+Tra cứu thông tin khách hàng qua CIF.
 
-Request tối thiểu: `cifNumber`, `currency`.
+#### `GET /api/v1/customers/{cifNumber}/accounts`
+Lấy danh sách mọi tài khoản thanh toán thuộc sở hữu của CIF.
 
-Response: `accountId`, `accountNumber`, `cifNumber`, `currency`, `balance`, `status`, `createdAt`.
+#### `GET /api/v1/customers/{cifNumber}/cards`
+Lấy danh sách mọi thẻ ngân hàng thuộc CIF.
 
-`GET /accounts/{accountId}` — lấy thông tin tài khoản và số dư hiện tại.
+---
 
-`GET /accounts/{accountId}/balance` — lấy số dư hiện tại.
+### 2. Tài khoản (Account)
 
-`GET /customers/{cifNumber}/accounts` — lấy mọi tài khoản thanh toán của CIF.
+#### `POST /api/v1/accounts`
+Mở tài khoản thanh toán mới gắn với CIF.
+- **Request Body mẫu:**
+  ```json
+  {
+    "cifNumber": "00000001",
+    "currency": "VND",
+    "initialBalance": 1000000
+  }
+  ```
+- **Response 200 OK:**
+  ```json
+  {
+    "accountId": "acc-7f8e-4a12",
+    "accountNumber": "100200300401",
+    "cifNumber": "00000001",
+    "currency": "VND",
+    "balance": 1000000,
+    "status": "ACTIVE",
+    "createdAt": "2026-10-14T10:01:00Z"
+  }
+  ```
 
-`GET /customers/{cifNumber}/cards` — lấy mọi thẻ của CIF.
+#### `GET /api/v1/accounts/{id}`
+Lấy thông tin tài khoản và số dư hiện tại.
 
-### Thẻ
+#### `GET /api/v1/accounts/{id}/balance`
+Truy vấn số dư tức thời.
+- **Response 200 OK:**
+  ```json
+  {
+    "accountId": "acc-7f8e-4a12",
+    "accountNumber": "100200300401",
+    "currency": "VND",
+    "actualBalance": 1000000,
+    "availableBalance": 800000,
+    "holdBalance": 200000,
+    "status": "ACTIVE"
+  }
+  ```
 
-`POST /accounts/{accountId}/cards` — phát hành thẻ mô phỏng cho tài khoản.
+#### `GET /api/v1/accounts/{id}/transactions?from=&to=&page=0&size=20`
+Truy vấn lịch sử biến động số dư có phân trang.
 
-Response: `cardId`, `maskedCardNumber`, `accountId`, `status`, `createdAt`. Trả về số CVV thật do đây là demo.
+---
 
-`GET /cards/{cardId}` — tra cứu trạng thái thẻ và tài khoản liên kết.
+### 3. Thẻ Ngân hàng (Card)
 
-### Chuyển tiền
+#### `POST /api/v1/cards` hoặc `POST /api/v1/accounts/{id}/cards`
+Phát hành thẻ mô phỏng gắn với tài khoản thanh toán đang hoạt động.
+- **Request Body (`POST /api/v1/cards`):**
+  ```json
+  {
+    "accountId": "acc-7f8e-4a12"
+  }
+  ```
+- **Response 200 OK:**
+  ```json
+  {
+    "cardId": "crd-9a1b-3c4d",
+    "maskedCardNumber": "9704-12XX-XXXX-3456",
+    "accountId": "acc-7f8e-4a12",
+    "cifNumber": "00000001",
+    "status": "ACTIVE",
+    "createdAt": "2026-10-14T10:02:00Z"
+  }
+  ```
+  > ⚠️ **Tuân thủ Bảo mật & NĐ 13/2023/NĐ-CP:** Số thẻ luôn được che mờ (Masked PAN). Hệ thống **tuyệt đối KHÔNG lưu trữ và KHÔNG trả về mã bí mật CVV/PIN**.
 
-`POST /transfers` — chuyển tiền nội bộ.
+#### `GET /api/v1/cards/{id}`
+Tra cứu trạng thái và thông tin thẻ.
 
-Request tối thiểu: `sourceAccountId`, `destinationAccountId`, `amount`, `currency`, `idempotencyKey`, `description`.
+---
 
-Response: `transactionId`, `status`, `sourceAccountId`, `destinationAccountId`, `amount`, `currency`, `createdAt`.
+### 4. Chuyển tiền (Transfer Saga)
 
-Các trạng thái MVP: `SUCCESS`, `FAILED`, `REVERSED`. `idempotencyKey` bắt buộc để một yêu cầu gửi lại không trừ tiền hai lần.
+#### `POST /api/v1/transfers`
+Tiếp nhận lệnh chuyển tiền nội bộ được điều phối bằng Saga Orchestration.
+- **Request Body mẫu:**
+  ```json
+  {
+    "sourceAccountId": "acc-7f8e-4a12",
+    "destinationAccountId": "acc-3b2a-9f81",
+    "amount": 250000,
+    "currency": "VND",
+    "idempotencyKey": "trans-client-uuid-001",
+    "description": "Chuyen tien an trua"
+  }
+  ```
+- **Response thành công (200 OK):**
+  ```json
+  {
+    "transactionId": "d3b07384-d113-3920-a193-cc449be9d4a4",
+    "status": "SUCCESS",
+    "sourceAccountId": "acc-7f8e-4a12",
+    "destinationAccountId": "acc-3b2a-9f81",
+    "amount": 250000,
+    "currency": "VND",
+    "description": "Chuyen tien an trua",
+    "createdAt": "2026-10-14T10:03:00Z"
+  }
+  ```
+- **Trường hợp quá hạn chờ đồng bộ (Async Fallback):**
+  Nếu Saga chưa kịp hoàn tất trong giới hạn thời gian chờ đồng bộ (cấu hình `corebank.transfer.sync-timeout-seconds: 3`), API phản hồi kết quả tức thì với `status: "PENDING"`. Giao dịch tiếp tục hoàn tất ngầm trong nền và đồng bộ trạng thái cuối cùng sang Kafka topic `bank.transfers.events`.
+- **Trường hợp lỗi nghiệp vụ:**
+  - Không đủ số dư: Ném ngoại lệ nghiệp vụ trả về lỗi HTTP `422 Unprocessable Entity` (hoặc `400 Bad Request`).
+  - Gửi lại cùng `idempotencyKey` nhưng sai khác số tiền / tài khoản nhận: Trả về lỗi HTTP `409 Conflict`.
+  - Gửi lại cùng `idempotencyKey` và khớp payload: Trả ngay kết quả cũ trong $\le 50\text{ms}$ (Idempotent Replay).
 
-### Lịch sử giao dịch
+#### `GET /api/v1/transfers/{id}`
+Tra cứu trạng thái lệnh chuyển tiền theo `transferId`.
 
-`GET /accounts/{accountId}/transactions?from=&to=&page=&size=` — trả danh sách giao dịch theo thời gian, có phân trang.
+#### `GET /api/v1/transfers?accountId={accountId}`
+Lấy danh sách các lệnh chuyển tiền liên quan đến tài khoản.
 
-### Vận hành
+---
 
-`GET /actuator/health` — health check cho Docker và các service khác.
+### 5. Vận hành & Giám sát (Observability)
+- **Health check:** `GET /actuator/health`
+- **Prometheus Metrics:** `GET /actuator/prometheus` (bao gồm các metric nghiệp vụ `corebank_saga_step_total`, `corebank_saga_stuck_total`, `corebank_concurrency_retries_total`).
 
-## Dữ liệu chính
+---
 
-- `customers`: CIF là mã định danh duy nhất của khách hàng.
-- `accounts`: số tài khoản, CIF sở hữu, loại tiền, số dư, trạng thái. Một CIF có thể có nhiều tài khoản.
-- `cards`: số thẻ được mã hóa/masked, tài khoản liên kết, trạng thái.
-- `transactions`: mã giao dịch, tài khoản nguồn/đích, số tiền, trạng thái, idempotency key, thời gian.
+## Kiến trúc Kỹ thuật & Hạ tầng
 
-Tiền lưu bằng số nguyên đơn vị nhỏ nhất hoặc `BigDecimal` theo một quy ước thống nhất; không dùng `float/double`.
+- **Ngôn ngữ & Framework:** Java 21 LTS, Spring Boot 4.1.0 (Spring Framework 7), Jackson 3 (`tools.jackson.*`).
+- **Mô hình Kiến trúc:** Modular Monolith chia theo Bounded Contexts:
+  - `com.hieu.corebank.account`: Aggregate tài khoản, quản lý Holds và sổ cái, Event Sourcing.
+  - `com.hieu.corebank.transfer`: Aggregate chuyển tiền, Saga Orchestrator, Tự phục hồi (`SagaRecoveryJob`).
+  - `com.hieu.corebank.card`: Quản lý phát hành thẻ, che mờ thông tin PAN (Zero CVV).
+  - `com.hieu.corebank.customer`: Quản lý hồ sơ CIF, đối soát tính duy nhất của CCCD.
+  - `com.hieu.corebank.access`: Phân quyền nội bộ qua `@CoreBankAuthorization` Aspect và vai trò dịch vụ (`ROLE_SERVICE_*`).
+  - `com.hieu.corebank.shared`: Shared Kernel (Value Objects `Money`, `Currency`, `NationalId`, `CardNumber`, Event Store, Outbox).
+- **Phân tách Vật lý CQRS trên K8s:**
+  Hệ thống hỗ trợ Spring Profiles tập trung qua `ProfileConstants`:
+  - `command`: Pod ghi, kết nối Primary Write Master DB, thực thi nghiệp vụ và Saga.
+  - `query`: Pod đọc, kết nối Read Replica DB, phục vụ truy vấn sao kê/số dư, co giãn tự động theo HPA (3-20 Pods).
+  - `all`: Mặc định cho môi trường local/docker-compose, kích hoạt đầy đủ cả Command và Query.
+- **Database:** Oracle Database 23c Free. Quản lý schema bằng Flyway (`V1__init_schema.sql`).
+- **Event-Driven & Outbox:** Transactional Outbox Pattern đẩy integration events (`TransferCompletedEventDTO`, `TransferFailedEventDTO`) sang Apache Kafka topic `bank.transfers.events`.
 
-## Công nghệ và Docker
+---
 
-- Backend: Java Spring Boot 4.
-- Database: Oracle Database chạy trong Docker cho bản demo.
-- Đóng gói: Dockerfile cho ứng dụng và Docker Compose cho app + database oracle.
-- Khi container database khởi động, schema và dữ liệu mẫu được tạo tự động.
-- Tài khoản/mật khẩu database hardcode trong cấu hình demo chỉ để chạy local; phải thay bằng Docker secrets hoặc biến môi trường trước khi dùng ngoài môi trường demo.
+## Chạy Demo Local
 
-## Chạy demo một lệnh
+### Yêu cầu Tiên quyết
+Docker Desktop đang chạy trên máy.
 
-Yêu cầu duy nhất là Docker Desktop đang chạy. Tại thư mục `corebank`, chạy:
-
+### Khởi động nhanh
+Tại thư mục `corebank`:
 ```bash
 docker compose up --build
 ```
 
-Lần đầu Oracle cần một ít thời gian để khởi tạo. Khi log có dòng Spring Boot đã chạy, API sẵn sàng tại `http://localhost:8180`.
+API sẵn sàng tại `http://localhost:8180` khi log xuất hiện thông báo Spring Boot đã khởi động thành công.
 
-Cổng host mặc định là `8180` để tránh va chạm với các ứng dụng thường dùng `8080`. Nếu cần cổng khác, chạy ví dụ `APP_PORT=8090 docker compose up --build`.
-
-Database test đã cố định thông tin đăng nhập:
-
+Thông số kết nối Database mặc định trong demo:
 | Thành phần | Giá trị |
 | --- | --- |
-| Host / port | `localhost:1521` |
+| Host / Port | `localhost:1521` |
 | Service name | `FREEPDB1` |
 | App username | `corebank` |
 | App password | `corebank_demo` |
 | Oracle SYSTEM password | `oracle_demo` |
 
-Compose giữ dữ liệu trong volume `oracle-data`; các lần khởi động sau chỉ cần `docker compose up`. Dừng container bằng `docker compose down`. Nếu muốn xóa hẳn dữ liệu demo để tạo lại từ đầu, dùng `docker compose down -v`.
+### Dữ liệu Mẫu Khởi tạo
+Hệ thống tự động seed 2 khách hàng mẫu khi database trống:
+- `CIF00000001`: 2 tài khoản, số dư `10,000,000 VND` và `5,000,000 VND`
+- `CIF00000002`: 1 tài khoản, số dư `5,000,000 VND`
 
-Sau thay đổi mô hình từ `ownerId` sang CIF, nếu bạn đã từng chạy bản database cũ thì chạy `docker compose down -v` một lần trước khi khởi động lại.
+### Kịch bản Thử nghiệm Nhanh với cURL
 
-Hai tài khoản mẫu được tạo tự động khi database trống:
-
-- `CIF00000001`: 2 tài khoản, số dư `10,000,000.00 VND` và `5,000,000.00 VND`
-- `CIF00000002`: 1 tài khoản, số dư `5,000,000.00 VND`
-
-Tạo một tài khoản để lấy `accountId` và test các API khác:
-
+1. Tạo khách hàng mới:
 ```bash
 curl -X POST http://localhost:8180/api/v1/customers \
   -H 'Content-Type: application/json' \
-  -d '{"cifNumber":"CIFTEST001"}'
-curl -X POST http://localhost:8180/api/v1/accounts \
-  -H 'Content-Type: application/json' \
-  -d '{"cifNumber":"CIFTEST001","currency":"VND","initialBalance":1000000}'
+  -d '{
+    "fullName": "TRAN VAN TEST",
+    "nationalId": "079090123456",
+    "phoneNumber": "0901234567",
+    "email": "test@simulation.bank"
+  }'
 ```
 
-Health check: `http://localhost:8180/actuator/health`.
+2. Mở tài khoản thanh toán:
+```bash
+curl -X POST http://localhost:8180/api/v1/accounts \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "cifNumber": "00000003",
+    "currency": "VND",
+    "initialBalance": 2000000
+  }'
+```
 
-## Nguyên tắc thiết kế (Cloud-Native & Distributed System)
+3. Phát hành thẻ:
+```bash
+curl -X POST http://localhost:8180/api/v1/cards \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "accountId": "<ACCOUNT_ID_FROM_STEP_2>"
+  }'
+```
 
-- **Source of Truth & ODS (Read Replica):** Corebank là nơi duy nhất giữ sổ cái kế toán và lịch sử giao dịch. Để chịu tải cho 10 triệu người dùng lướt xem lịch sử mà không sập hệ thống Ledger, Corebank sẽ triển khai mô hình **CQRS nội bộ** thông qua một Cụm Oracle Đọc (Operational Data Store - ODS / Active Data Guard).
-- **Query API cho Vệ tinh:** Các service như `money-bank` đóng vai trò là BFF, sẽ gọi trực tiếp vào API Đọc của Corebank (chọc vào ODS) để lấy lịch sử. Lịch sử không bao giờ được phép copy ra ngoài Corebank.
-- **Race Condition & Locking:** Tạo chuyển tiền và ghi sổ giao dịch trong cùng một database transaction. Bắt buộc dùng Optimistic Locking (hoặc Pessimistic Locking) để khóa dòng số dư.
-- **Idempotency (Luỹ đẳng):** Mọi API thay đổi trạng thái (như `POST /transfers`) phải kiểm tra `idempotencyKey` để chống trừ tiền đúp.
-- **Distributed Transaction:** Corebank nhận request từ Cadence Workflow / Kafka của các service vệ tinh. Dùng Outbox Pattern để báo kết quả.
-- **Database Bottleneck:** Oracle Active Data Guard sẽ giải quyết nút thắt cổ chai cho các tác vụ Query nặng.
+4. Thực hiện chuyển tiền có Idempotency:
+```bash
+curl -X POST http://localhost:8180/api/v1/transfers \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "sourceAccountId": "<ACCOUNT_ID_FROM_STEP_2>",
+    "destinationAccountId": "<DESTINATION_ACCOUNT_ID>",
+    "amount": 500000,
+    "currency": "VND",
+    "idempotencyKey": "demo-transfer-req-001",
+    "description": "Test transfer"
+  }'
+```
 
-## Hướng dẫn Ghi Log & Observability
-> ⚠️ Xem tài liệu đầy đủ tại `../../devOps.md` ở root dự án.
+---
 
-Khi code `corebank`, Dev lưu ý:
-1. Luôn sử dụng `@Slf4j` cho việc ghi log, tránh dùng `System.out.println`.
-2. Truyền đúng `correlationId`, `traceId` và các Context ID khác để liên kết log với các service gọi tới (như Money Bank).
-3. Đảm bảo cấu hình log ra định dạng JSON để agent thu thập về Loki.
+## Ghi Log & Khả năng Quan sát (Observability)
+Chi tiết hướng dẫn hạ tầng Kubernetes và Logging xem tại [`docs/K8S_LOCAL_GUIDE.md`](../docs/K8S_LOCAL_GUIDE.md).
+
+Quy tắc bắt buộc đối với Developer khi phát triển Corebank:
+1. Luôn sử dụng `@Slf4j`, tuyệt đối không dùng `System.out.println`.
+2. Tuân thủ `setIncludePayload(false)` trong [`RequestLoggingConfig`](src/main/java/com/hieu/corebank/shared/infrastructure/web/RequestLoggingConfig.java) để không in plain text nội dung payload nhạy cảm ra log.
+3. Không ghi log chứa thông tin PII không che mờ (CCCD, số thẻ đầy đủ, số dư chi tiết).
+4. Truyền đúng `traceId` và `correlationId` để phân tích truy vết tập trung trên Grafana Loki và Tempo.

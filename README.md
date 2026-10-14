@@ -15,7 +15,7 @@ Chi tiết kiến trúc và thiết kế nghiệp vụ của dự án được q
 - `k8s/`: Chứa các cấu hình phân bổ tài nguyên và triển khai lên cụm Kubernetes (Manifests, GitOps).
 - `common-service/`: Thư viện dùng chung (Shared library, DTOs, Envelopes) giữa các service, không có runtime độc lập.
 - **Microservices chính:**
-  - `corebank/`: Sổ cái trung tâm quản lý số dư và lịch sử giao dịch (Sử dụng Oracle DB, Outbox Pattern). 
+  - `corebank/`: Sổ cái trung tâm quản lý tài khoản, số dư và lịch sử giao dịch (Modular Monolith DDD, Event Sourcing, Saga Orchestration, Oracle DB, CQRS phân tách Command/Query trên K8s). 
   - `money-bank/`: Dịch vụ ngân hàng số mô phỏng, xử lý luồng giao dịch chuyển tiền.
   - `cms/`: Hệ thống quản trị nội bộ Back-office.
   - `paygate/`: Cổng thanh toán nghiệp vụ thu/chi hộ.

@@ -39,35 +39,39 @@ corebank/src/main/java/com/hieu/corebank/
 ├── account/                         # BC: account (Core Subdomain)
 │   ├── domain/                      # Account (aggregate root), Hold (entity), AccountId, AccountNumber, AccountStatus
 │   ├── application/
-│   │   ├── command/                 # OpenAccount, ReserveFunds, CreditFunds, SettleReservation, ReleaseReservation
-│   │   ├── query/                   # GetAccountById, GetAccountsByCif, GetAccountBalance, GetTransactionHistory
+│   │   ├── command/                 # AccountHandler (OpenAccount, ReserveFunds, CreditFunds, Settle, Release)
+│   │   ├── query/                   # Query handlers qua RequestDTOs (AccountGet, AccountsByCif, AccountBalance, TransactionHistory)
 │   │   └── port/                    # CustomerDirectory
 │   ├── infrastructure/
 │   │   ├── persistence/             # EventSourcedAccountRepository, SequenceAccountNumberGenerator
 │   │   ├── projection/              # AccountProjector, AccountView, TransactionHistoryView
 │   │   └── customer/                # LocalCustomerDirectory (adapter)
-│   └── api/                         # AccountController(+Impl), request/response DTOs, mappers
+│   └── api/                         # AccountController(+Impl), request/response DTOs
 ├── transfer/                        # BC: transfer (Core Subdomain)
 │   ├── domain/                      # Transfer (aggregate root), TransferId, TransferStatus, TransferRepository (port)
 │   ├── application/
-│   │   ├── command/                 # InitiateTransferHandler (Idempotency & Hash Verification)
+│   │   ├── command/                 # TransferHandler (Idempotency, Hash Verification & Bounded Latency)
 │   │   ├── saga/                    # TransferSaga (orchestrator), SagaRecoveryJob, SagaMetricsCollector
-│   │   ├── query/                   # GetTransferById, GetTransferHistory
-│   │   └── port/                    # AccountGateway
+│   │   ├── query/                   # GetTransferByIdQueryHandler, GetTransferHistoryQueryHandler (RequestDTOs)
+│   │   └── port/                    # AccountGateway, StuckTransferQueryPort
 │   ├── infrastructure/
 │   │   ├── persistence/             # EventSourcedTransferRepository
-│   │   ├── projection/              # TransferView, TransferProjector
-│   │   └── account/                 # InProcessAccountGateway (adapter gọi account.application)
+│   │   ├── projection/              # TransferView, TransferProjector, StuckTransferQueryAdapter
+│   │   └── account/                 # InProcessAccountGateway (adapter gọi AccountHandler)
 │   └── api/                         # TransferController(+Impl), TransferRequestDTO, TransferResponseDTO
 ├── card/                            # BC: card (Supporting Subdomain)
-│   ├── domain/                      # Card (aggregate root), CardId, CardNumber, CardStatus
-│   ├── application/                 # IssueCardHandler, LockCardHandler
+│   ├── domain/                      # BankCard, CardId, CardNumber, CardStatus
+│   ├── application/
+│   │   ├── command/                 # CardHandler (IssueCard)
+│   │   └── query/                   # Query handlers qua RequestDTOs (CardGet, CardsByCif)
 │   ├── infrastructure/              # JpaBankCard, CardRepository, CardMapper
 │   └── api/                         # CardController(+Impl), DTOs (Zero CVV returned)
 ├── customer/                        # BC: customer (Supporting Subdomain)
-│   ├── domain/                      # Customer, NationalId, SequenceCifGenerator
-│   ├── application/                 # CreateCustomerHandler, GetCustomerHandler
-│   ├── infrastructure/              # JpaCustomer, CustomerRepository
+│   ├── domain/                      # Customer, NationalId, SequenceCifGenerator, CifGenerator
+│   ├── application/
+│   │   ├── command/                 # CustomerHandler (CreateCustomer)
+│   │   └── query/                   # GetCustomerQueryHandler (CustomerGetRequestDTO)
+│   ├── infrastructure/              # JpaCustomer, CustomerRepository, SequenceCifGenerator
 │   └── api/                         # CustomerController(+Impl), DTOs (Masked CCCD)
 └── access/                          # BC: access (Generic Subdomain)
     ├── domain/                      # Role, Permission, User
@@ -290,7 +294,7 @@ Tạo hồ sơ khách hàng mới, sinh mã CIF 8 số tự động và kiểm t
   {
     "cifNumber": "00012345",
     "fullName": "NGUYEN VAN A",
-    "maskedNationalId": "012345****01",
+    "nationalId": "012345****01",
     "phoneNumber": "0987654321",
     "email": "nguyenvana@example.com",
     "createdAt": "2026-10-10T10:15:30Z"
@@ -354,22 +358,24 @@ Truy vấn số dư tức thời.
 
 ---
 
-### 3.3. Nhóm Quản lý Thẻ (`CardController`)
+### 3.3. Nhóm Quản lý Thẻ (`CardController` & `AccountController`)
 
-#### POST `/api/v1/cards`
-Phát hành thẻ liên kết tài khoản thanh toán.
-- **Request Body:**
+#### `POST /api/v1/cards` hoặc `POST /api/v1/accounts/{accountId}/cards`
+Phát hành thẻ thanh toán liên kết tài khoản.
+- **Request Body (`POST /api/v1/cards`):**
   ```json
   {
     "accountId": "acc-7f8e-4a12"
   }
   ```
-- **Response 201 Created (Che mờ PAN, tuyệt đối KHÔNG trả về CVV):**
+  *(Với `POST /api/v1/accounts/{accountId}/cards`, `accountId` lấy trực tiếp từ PathVariable).*
+- **Response 200/201 Created (Che mờ PAN, tuyệt đối KHÔNG lưu và KHÔNG trả về CVV):**
   ```json
   {
     "cardId": "crd-9a1b-3c4d",
     "maskedCardNumber": "4111-22XX-XXXX-3344",
     "accountId": "acc-7f8e-4a12",
+    "cifNumber": "00012345",
     "status": "ACTIVE",
     "createdAt": "2026-10-10T10:17:00Z"
   }
@@ -382,7 +388,9 @@ Phát hành thẻ liên kết tài khoản thanh toán.
 #### POST `/api/v1/transfers`
 Tiếp nhận lệnh chuyển tiền nội bộ qua Saga. Hỗ trợ Idempotency tất định và Bounded Latency.
 - **Headers:**
-  - `Idempotency-Key: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d` (Bắt buộc)
+  - `Content-Type: application/json`
+  - `X-Correlation-Id: <UUID>` (Distributed Tracing)
+  - `Idempotency-Key: <String>` (Tuỳ chọn đồng bộ ở tầng Gateway; `TransferRequestDTO.idempotencyKey` trong body là nguồn chân lý)
 - **Request Body:**
   ```json
   {
@@ -390,6 +398,7 @@ Tiếp nhận lệnh chuyển tiền nội bộ qua Saga. Hỗ trợ Idempotency
     "destinationAccountId": "acc-3b2a-9f81",
     "amount": 250000,
     "currency": "VND",
+    "idempotencyKey": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
     "description": "Thanh toan tien an trua"
   }
   ```
@@ -398,7 +407,7 @@ Tiếp nhận lệnh chuyển tiền nội bộ qua Saga. Hỗ trợ Idempotency
   ```json
   {
     "transactionId": "d3b07384-d113-3920-a193-cc449be9d4a4",
-    "status": "COMPLETED",
+    "status": "SUCCESS",
     "sourceAccountId": "acc-7f8e-4a12",
     "destinationAccountId": "acc-3b2a-9f81",
     "amount": 250000,
@@ -407,9 +416,9 @@ Tiếp nhận lệnh chuyển tiền nội bộ qua Saga. Hỗ trợ Idempotency
     "createdAt": "2026-10-10T10:18:00Z"
   }
   ```
-  *(Lưu ý: Response tuyệt đối không phơi bày số dư người nhận để tuân thủ Data Minimization - [NFR-CB-20](./brd.md#L246)).*
+  *(Lưu ý: Response tuyệt đối không phơi bày số dư người nhận để tuân thủ Data Minimization - [NFR-CB-20](./brd.md#L246); DTO map trạng thái `COMPLETED` của Aggregate thành `SUCCESS`).*
 
-- **Kịch bản 2: Quá thời hạn timeout $N$ giây $\rightarrow$ Response 202 Accepted (Async Fallback):**
+- **Kịch bản 2: Quá thời hạn timeout $N$ giây $\rightarrow$ Response HTTP 200/202 kèm `status=PENDING` (Async Fallback):**
   ```json
   {
     "transactionId": "d3b07384-d113-3920-a193-cc449be9d4a4",
@@ -418,9 +427,11 @@ Tiếp nhận lệnh chuyển tiền nội bộ qua Saga. Hỗ trợ Idempotency
     "destinationAccountId": "acc-3b2a-9f81",
     "amount": 250000,
     "currency": "VND",
+    "description": "Thanh toan tien an trua",
     "createdAt": "2026-10-10T10:18:00Z"
   }
   ```
+  *(Giải phóng kết nối cho client không bị treo; Saga tiếp tục hoàn tất ngầm trong nền và đẩy kết quả sang Kafka).*
 
 - **Kịch bản 3: Gửi lại cùng `idempotencyKey` nhưng sai lệch payload $\rightarrow$ Response 409 Conflict:**
   ```json

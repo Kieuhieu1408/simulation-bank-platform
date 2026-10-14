@@ -61,7 +61,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cifNumber\": \"CIF00000003\"\n}"
+              "raw": "{\n  \"fullName\": \"NGUYEN VAN A\",\n  \"nationalId\": \"012345678901\",\n  \"phoneNumber\": \"0987654321\",\n  \"email\": \"nguyenvana@simulation.bank\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/customers",
