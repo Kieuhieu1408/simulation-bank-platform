@@ -109,6 +109,11 @@ money-bank:
     authenticated-paths:
       - /api/v1/**
 
+  # ── OTP Configuration (Mặc định 111111 cho test) ───────────────────────────
+  otp:
+    default-test-otp: ${DEFAULT_TEST_OTP:111111}
+    expires-in-seconds: ${OTP_EXPIRES_IN_SECONDS:300}
+
   # ── Outbox Dispatcher (U-07) ────────────────────────────────────────────────
   # dispatcher-enabled: false   ← mặc định TẮT; chỉ bật khi Kafka sẵn sàng.
   # Bật mà thiếu spring.kafka.bootstrap-servers → ứng dụng fail khi khởi động.

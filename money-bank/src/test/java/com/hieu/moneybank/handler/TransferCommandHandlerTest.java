@@ -6,6 +6,7 @@ import com.hieu.moneybank.dto.request.TransferRequestDTO;
 import com.hieu.moneybank.dto.response.TransferResponseDTO;
 import com.hieu.moneybank.exception.BusinessException;
 import com.hieu.moneybank.handler.command.transfer.TransferCommandHandler;
+import com.hieu.moneybank.service.otp.OtpService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,11 +30,14 @@ class TransferCommandHandlerTest {
     @Mock
     private CorebankClient corebankClient;
 
+    @Mock
+    private OtpService otpService;
+
     private TransferCommandHandler handler;
 
     @BeforeEach
     void setUp() {
-        handler = new TransferCommandHandler(corebankClient);
+        handler = new TransferCommandHandler(corebankClient, otpService);
     }
 
     @Test

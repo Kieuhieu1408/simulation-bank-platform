@@ -29,4 +29,9 @@ public class ConfirmTransferProposalCommand implements Command<TransferProposalR
      * CIF của người xác nhận — inject từ identity context, không từ body.
      */
     private String confirmerCustomerId;
+
+    /**
+     * Mã OTP xác thực giao dịch (mặc định test: 111111).
+     */
+    private String otp;
 }

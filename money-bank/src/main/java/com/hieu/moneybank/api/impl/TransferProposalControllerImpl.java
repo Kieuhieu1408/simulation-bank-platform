@@ -5,9 +5,9 @@ import com.hieu.moneybank.api.BaseController;
 import com.hieu.moneybank.api.TransferProposalController;
 import com.hieu.moneybank.dto.request.ConfirmTransferProposalCommand;
 import com.hieu.moneybank.dto.request.CreateTransferProposalCommand;
+import com.hieu.moneybank.dto.request.TransferProposalGetRequestDTO;
+import com.hieu.moneybank.dto.request.TransferProposalHistoryRequestDTO;
 import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
-import com.hieu.moneybank.handler.query.transfer.GetTransferProposalQueryHandler.GetProposalByIdQuery;
-import com.hieu.moneybank.handler.query.transfer.GetTransferProposalQueryHandler.GetProposalsByAccountQuery;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,10 +23,13 @@ import java.time.Instant;
 public class TransferProposalControllerImpl extends BaseController implements TransferProposalController {
 
     private final IdentityContextResolver identityContextResolver;
+    private final com.hieu.moneybank.service.command.TransferProposalCommandService proposalService;
 
     @Autowired
-    public TransferProposalControllerImpl(IdentityContextResolver identityContextResolver) {
+    public TransferProposalControllerImpl(IdentityContextResolver identityContextResolver,
+                                          com.hieu.moneybank.service.command.TransferProposalCommandService proposalService) {
         this.identityContextResolver = identityContextResolver;
+        this.proposalService = proposalService;
     }
 
     @Override
@@ -37,17 +40,26 @@ public class TransferProposalControllerImpl extends BaseController implements Tr
     }
 
     @Override
-    public ResponseEntity<TransferProposalResponseDTO> confirm(String id) {
+    public ResponseEntity<TransferProposalResponseDTO> confirm(String id, com.hieu.moneybank.dto.request.ConfirmTransferProposalRequestDTO request) {
+        String otp = (request != null) ? request.getOtp() : null;
         ConfirmTransferProposalCommand command = ConfirmTransferProposalCommand.builder()
             .proposalId(id)
             .confirmerCustomerId(identityContextResolver.requireCurrent().customerId())
+            .otp(otp)
             .build();
         return execute(command, TransferProposalResponseDTO.class);
     }
 
     @Override
+    public ResponseEntity<com.hieu.moneybank.dto.response.OtpResponseDTO> sendOtp(String id) {
+        String customerId = identityContextResolver.requireCurrent().customerId();
+        com.hieu.moneybank.dto.response.OtpResponseDTO response = proposalService.sendOtp(id, customerId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Override
     public ResponseEntity<TransferProposalResponseDTO> get(String id) {
-        return executeQuery(new GetProposalByIdQuery(id), TransferProposalResponseDTO.class);
+        return executeQuery(new TransferProposalGetRequestDTO(id), TransferProposalResponseDTO.class);
     }
 
     @Override
@@ -57,7 +69,7 @@ public class TransferProposalControllerImpl extends BaseController implements Tr
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return executeQuery(
-            new GetProposalsByAccountQuery(accountId, from, to, pageable),
+            new TransferProposalHistoryRequestDTO(accountId, from, to, pageable),
             (Class<Page<TransferProposalResponseDTO>>) (Class<?>) Page.class
         );
     }

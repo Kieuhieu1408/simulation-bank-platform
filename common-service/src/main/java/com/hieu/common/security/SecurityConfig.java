@@ -8,6 +8,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -20,6 +22,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Map;
 
 /**
  * Cấu hình resource server của Money Bank.
@@ -111,7 +116,27 @@ public class SecurityConfig {
         authoritiesConverter.setAuthoritiesClaimName(properties.getScopeClaim());
 
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            Collection<GrantedAuthority> authorities = new ArrayList<>(authoritiesConverter.convert(jwt));
+
+            // Trích xuất roles từ realm_access.roles (Keycloak default)
+            Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+            if (realmAccess != null && realmAccess.get("roles") instanceof Collection<?> roles) {
+                for (Object role : roles) {
+                    authorities.add(new SimpleGrantedAuthority(String.valueOf(role)));
+                }
+            }
+
+            // Trích xuất roles từ claim roles nếu có
+            Object rolesClaim = jwt.getClaim("roles");
+            if (rolesClaim instanceof Collection<?> roles) {
+                for (Object role : roles) {
+                    authorities.add(new SimpleGrantedAuthority(String.valueOf(role)));
+                }
+            }
+
+            return authorities;
+        });
         return converter;
     }
 }

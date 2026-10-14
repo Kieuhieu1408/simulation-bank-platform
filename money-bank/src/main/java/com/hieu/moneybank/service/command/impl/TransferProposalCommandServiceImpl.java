@@ -3,11 +3,15 @@ package com.hieu.moneybank.service.command.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hieu.common.outbox.OutboxRecorder;
+import com.hieu.moneybank.config.OtpProperties;
+import com.hieu.moneybank.constant.ProposalStatus;
 import com.hieu.moneybank.domain.TransferProposal;
+import com.hieu.moneybank.dto.response.OtpResponseDTO;
 import com.hieu.moneybank.exception.BusinessException;
 import com.hieu.moneybank.exception.NotFoundException;
 import com.hieu.moneybank.repository.TransferProposalRepository;
 import com.hieu.moneybank.service.command.TransferProposalCommandService;
+import com.hieu.moneybank.service.otp.OtpService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,28 +28,13 @@ public class TransferProposalCommandServiceImpl implements TransferProposalComma
     private final TransferProposalRepository repository;
     private final OutboxRecorder outboxRecorder;
     private final ObjectMapper objectMapper;
+    private final OtpService otpService;
+    private final OtpProperties otpProperties;
 
     @Override
     @Transactional
     public TransferProposal save(TransferProposal proposal) {
         return repository.save(proposal);
-    }
-
-    @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public TransferProposal saveRequiresNew(TransferProposal proposal) {
-        return repository.saveAndFlush(proposal);
-    }
-
-    @Override
-    @Transactional
-    public Optional<TransferProposal> findByIdForUpdate(String id) {
-        return repository.findByIdForUpdate(id);
-    }
-
-    @Override
-    public Optional<TransferProposal> findByIdempotencyKey(String idempotencyKey) {
-        return repository.findByIdempotencyKey(idempotencyKey);
     }
 
     @Override
@@ -84,6 +73,29 @@ public class TransferProposalCommandServiceImpl implements TransferProposalComma
         }
 
         return repository.saveAndFlush(proposal);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OtpResponseDTO sendOtp(String proposalId, String customerId) {
+        TransferProposal proposal = repository.findById(proposalId)
+            .orElseThrow(() -> new NotFoundException("Proposal không tồn tại: " + proposalId));
+
+        if (customerId != null && !customerId.equals(proposal.getInitiatorCustomerId())) {
+            throw new BusinessException("Chỉ người tạo proposal mới có quyền nhận OTP");
+        }
+
+        if (proposal.getStatus() != ProposalStatus.PENDING) {
+            throw new BusinessException("Chỉ có thể lấy OTP cho proposal ở trạng thái PENDING");
+        }
+
+        String otp = otpService.generateOtp(proposalId);
+        return OtpResponseDTO.builder()
+            .proposalId(proposalId)
+            .otp(otp)
+            .message("Mã OTP đã được gửi thành công (Mặc định test: " + otp + ")")
+            .expiresInSeconds(otpProperties.getExpiresInSeconds())
+            .build();
     }
 
     private void recordOutboxEvent(TransferProposal proposal, String eventType) {

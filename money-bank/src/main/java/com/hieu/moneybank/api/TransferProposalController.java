@@ -33,11 +33,20 @@ public interface TransferProposalController {
     );
 
     /**
-     * Bước 2: Xác nhận proposal.
+     * Bước 2: Xác nhận proposal kèm OTP (mặc định test: 111111).
      * Gọi Corebank và cập nhật status → CONFIRMED | FAILED.
      */
     @PostMapping("/{id}/confirm")
-    ResponseEntity<TransferProposalResponseDTO> confirm(@PathVariable String id);
+    ResponseEntity<TransferProposalResponseDTO> confirm(
+        @PathVariable String id,
+        @RequestBody(required = false) com.hieu.moneybank.dto.request.ConfirmTransferProposalRequestDTO request
+    );
+
+    /**
+     * Gửi / lấy mã OTP cho proposal chuyển tiền (mặc định test: 111111).
+     */
+    @PostMapping("/{id}/otp")
+    ResponseEntity<com.hieu.moneybank.dto.response.OtpResponseDTO> sendOtp(@PathVariable String id);
 
     /**
      * Lấy proposal theo ID.

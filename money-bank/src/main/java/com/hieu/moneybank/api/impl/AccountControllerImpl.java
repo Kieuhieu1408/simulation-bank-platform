@@ -4,13 +4,13 @@ import com.hieu.moneybank.api.AccountController;
 import com.hieu.moneybank.api.BaseController;
 import com.hieu.moneybank.dto.request.AccountCreateRequestDTO;
 import com.hieu.moneybank.dto.request.IssueCardRequestDTO;
+import com.hieu.moneybank.dto.request.TransactionHistoryRequestDTO;
 import com.hieu.moneybank.dto.response.AccountBalanceResponseDTO;
 import com.hieu.moneybank.dto.response.AccountResponseDTO;
 import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
 import com.hieu.moneybank.dto.response.TransactionHistoryItemDTO;
 import com.hieu.moneybank.handler.query.account.GetAccountBalanceQueryHandler.GetAccountBalanceQuery;
 import com.hieu.moneybank.handler.query.account.GetAccountByIdQueryHandler.GetAccountByIdQueryRequestDTO;
-import com.hieu.moneybank.handler.query.transfer.GetTransferHistoryQueryHandler.GetTransferHistoryQuery;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -43,9 +43,10 @@ public class AccountControllerImpl extends BaseController implements AccountCont
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public ResponseEntity<Page<TransactionHistoryItemDTO>> history(String id, Instant from, Instant to, int page, int size) {
         return executeQuery(
-                new GetTransferHistoryQuery(id, from, to, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "occurredAt"))),
+                new TransactionHistoryRequestDTO(id, from, to, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "occurredAt"))),
                 (Class<Page<TransactionHistoryItemDTO>>) (Class<?>) Page.class
         );
     }

@@ -9,6 +9,7 @@ import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
 import com.hieu.moneybank.dto.response.TransferResponseDTO;
 import com.hieu.moneybank.exception.BusinessException;
 import com.hieu.moneybank.service.command.TransferProposalCommandService;
+import com.hieu.moneybank.service.otp.OtpService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -21,10 +22,14 @@ public class ConfirmTransferProposalCommandHandler
 
     private final TransferProposalCommandService proposalService;
     private final CorebankClient corebankClient;
+    private final OtpService otpService;
 
     @Override
     public TransferProposalResponseDTO handle(ConfirmTransferProposalCommand command) {
         
+        // 0. Xác thực OTP (mặc định test: 111111)
+        otpService.validateOtp(command.getProposalId(), command.getOtp());
+
         // 1. Transaction 1: Lock và chuyển sang VALIDATING
         TransferProposal proposal = proposalService.startValidating(
             command.getProposalId(), command.getConfirmerCustomerId());

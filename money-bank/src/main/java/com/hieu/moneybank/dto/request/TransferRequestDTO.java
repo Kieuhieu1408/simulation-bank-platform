@@ -37,4 +37,7 @@ public class TransferRequestDTO implements Command<TransferResponseDTO> {
 
     @Size(max = 255)
     private String description;
+
+    @Size(max = 20)
+    private String otp;
 }
