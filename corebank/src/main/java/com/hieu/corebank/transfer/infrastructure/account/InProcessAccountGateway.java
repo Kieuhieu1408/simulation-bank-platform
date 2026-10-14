@@ -1,6 +1,7 @@
 package com.hieu.corebank.transfer.infrastructure.account;
 
 import com.hieu.corebank.account.application.command.AccountHandler;
+import com.hieu.corebank.shared.constant.ProfileConstants;
 import com.hieu.corebank.shared.domain.AccountId;
 import com.hieu.corebank.shared.domain.Money;
 import com.hieu.corebank.shared.domain.TransferId;
@@ -8,6 +9,7 @@ import com.hieu.corebank.transfer.application.port.AccountGateway;
 import com.hieu.corebank.transfer.application.saga.SagaMetricsCollector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Component;
  * chỉ số {@code corebank_concurrency_retries_total}.
  */
 @Slf4j
+@Profile({ProfileConstants.COMMAND, ProfileConstants.ALL, ProfileConstants.TEST})
 @Component
 @RequiredArgsConstructor
 public class InProcessAccountGateway implements AccountGateway {
