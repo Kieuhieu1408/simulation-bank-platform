@@ -1,6 +1,5 @@
 package com.hieu.moneybank.dto.response;
 
-import com.hieu.moneybank.domain.Customer;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,12 +13,9 @@ import java.time.Instant;
 @Builder
 public class CustomerResponseDTO {
     private String cifNumber;
+    private String nationalId;
+    private String fullName;
+    private String phoneNumber;
+    private String email;
     private Instant createdAt;
-
-    public static CustomerResponseDTO from(Customer customer) {
-        return CustomerResponseDTO.builder()
-                .cifNumber(customer.getCifNumber())
-                .createdAt(customer.getCreatedAt())
-                .build();
-    }
 }

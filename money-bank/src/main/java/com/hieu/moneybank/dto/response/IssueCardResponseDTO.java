@@ -1,7 +1,6 @@
 package com.hieu.moneybank.dto.response;
 
 import com.hieu.common.constant.CardStatus;
-import com.hieu.moneybank.domain.BankCard;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,18 +20,4 @@ public class IssueCardResponseDTO {
     private String cifNumber;
     private CardStatus status;
     private Instant createdAt;
-
-    public static IssueCardResponseDTO from(BankCard card) {
-        String number = card.getCardNumber();
-        String masked = number.substring(0, 4) + " **** **** " + number.substring(12);
-        return IssueCardResponseDTO.builder()
-                .cardId(card.getId())
-                .maskedCardNumber(masked)
-                .cvv(card.getCvv())
-                .accountId(card.getAccount().getId())
-                .cifNumber(card.getAccount().getCustomer().getCifNumber())
-                .status(card.getStatus())
-                .createdAt(card.getCreatedAt())
-                .build();
-    }
 }

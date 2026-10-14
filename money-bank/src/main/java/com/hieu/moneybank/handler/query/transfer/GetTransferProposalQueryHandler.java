@@ -2,6 +2,9 @@ package com.hieu.moneybank.handler.query.transfer;
 
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
+import com.hieu.common.security.IdentityContextResolver;
+import com.hieu.moneybank.client.CorebankClient;
+import com.hieu.moneybank.dto.response.AccountResponseDTO;
 import com.hieu.moneybank.dto.response.TransferProposalResponseDTO;
 import com.hieu.moneybank.exception.NotFoundException;
 import com.hieu.moneybank.repository.TransferProposalRepository;
@@ -9,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -31,18 +35,18 @@ public class GetTransferProposalQueryHandler {
             implements QueryHandler<GetProposalByIdQuery, TransferProposalResponseDTO> {
 
         private final TransferProposalRepository repository;
-        private final com.hieu.common.security.IdentityContextResolver identityContextResolver;
+        private final IdentityContextResolver identityContextResolver;
 
         @Override
         public TransferProposalResponseDTO handle(GetProposalByIdQuery query) {
             var entity = repository.findById(query.proposalId())
-                .orElseThrow(() -> new NotFoundException("Proposal không tồn tại: " + query.proposalId()));
-                
+                    .orElseThrow(() -> new NotFoundException("Proposal không tồn tại: " + query.proposalId()));
+
             String currentUserId = identityContextResolver.requireCurrent().customerId();
             if (!currentUserId.equals(entity.getInitiatorCustomerId())) {
-                throw new org.springframework.security.access.AccessDeniedException("Bạn không có quyền xem proposal này");
+                throw new AccessDeniedException("Bạn không có quyền xem proposal này");
             }
-            
+
             return TransferProposalResponseDTO.from(entity);
         }
     }
@@ -52,10 +56,10 @@ public class GetTransferProposalQueryHandler {
     // ──────────────────────────────────────────────────────────────────────────
 
     public record GetProposalsByAccountQuery(
-        String accountId,
-        Instant from,
-        Instant to,
-        Pageable pageable
+            String accountId,
+            Instant from,
+            Instant to,
+            Pageable pageable
     ) implements Query<Page<TransferProposalResponseDTO>> {}
 
     @Component
@@ -64,21 +68,20 @@ public class GetTransferProposalQueryHandler {
             implements QueryHandler<GetProposalsByAccountQuery, Page<TransferProposalResponseDTO>> {
 
         private final TransferProposalRepository repository;
-        private final com.hieu.moneybank.repository.AccountRepository accountRepository;
-        private final com.hieu.common.security.IdentityContextResolver identityContextResolver;
+        private final CorebankClient corebankClient;
+        private final IdentityContextResolver identityContextResolver;
 
         @Override
         public Page<TransferProposalResponseDTO> handle(GetProposalsByAccountQuery query) {
             String currentUserId = identityContextResolver.requireCurrent().customerId();
-            com.hieu.moneybank.domain.Account account = accountRepository.findById(query.accountId())
-                .orElseThrow(() -> new NotFoundException("Tài khoản không tồn tại: " + query.accountId()));
-                
-            if (!currentUserId.equals(account.getCustomer().getCifNumber())) {
-                throw new org.springframework.security.access.AccessDeniedException("Bạn không có quyền xem lịch sử tài khoản này");
+            AccountResponseDTO account = corebankClient.getAccount(query.accountId());
+
+            if (!currentUserId.equals(account.getCifNumber())) {
+                throw new AccessDeniedException("Bạn không có quyền xem lịch sử tài khoản này");
             }
 
             return repository.findByAccountId(
-                query.accountId(), query.from(), query.to(), query.pageable()
+                    query.accountId(), query.from(), query.to(), query.pageable()
             ).map(TransferProposalResponseDTO::from);
         }
     }

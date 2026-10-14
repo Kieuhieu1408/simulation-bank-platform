@@ -254,7 +254,7 @@ Quy tắc khách hàng hủy yêu cầu, GDV yêu cầu bổ sung và retry khi 
 | Amount | Y | Số tiền lớn hơn 0 |
 | Currency | Y | Loại tiền hỗ trợ: TBD |
 | Description | TBD | Nội dung chuyển tiền và giới hạn ký tự: TBD |
-| Idempotency key | Y | Khóa duy nhất cho một yêu cầu chuyển tiền |
+| Idempotency key | N (tuỳ chọn) | Khóa duy nhất cho một yêu cầu chuyển tiền; nếu client không truyền, backend tự động sinh UUID v4 trước khi điều phối sang Corebank (với luồng Proposal, `proposalId` do BE sinh được dùng làm idempotency key) |
 | Authentication data | Y | Dữ liệu xác thực giao dịch theo cơ chế được chốt |
 
 Kết quả tối thiểu gồm mã giao dịch Money Bank, mã tham chiếu Corebank, trạng thái, số tiền, loại tiền, tài khoản nguồn/đích đã mask và thời gian giao dịch.
@@ -266,7 +266,7 @@ Kết quả tối thiểu gồm mã giao dịch Money Bank, mã tham chiếu Cor
 - Số tiền phải lớn hơn 0 và không vượt quá số dư khả dụng sau khi tính phí, nếu có.
 - Hạn mức theo giao dịch/ngày/tháng, phí và loại tiền hỗ trợ: TBD.
 - Corebank là nguồn quyết định cuối cùng về số dư và kết quả hạch toán.
-- Mỗi yêu cầu phải có idempotency key. Gửi lại cùng khóa và cùng dữ liệu không được tạo giao dịch mới.
+- Mỗi yêu cầu chuyển tiền sang Corebank phải có idempotency key (do client truyền hoặc backend tự sinh). Gửi lại cùng khóa và cùng dữ liệu không được tạo giao dịch mới.
 - Gửi lại cùng idempotency key nhưng khác dữ liệu phải bị từ chối.
 - Khi timeout nhưng chưa xác định kết quả Corebank, không được tự động kết luận thất bại hoặc tạo lệnh mới.
 - Không ghi thông tin xác thực hoặc dữ liệu nhạy cảm vào application log.

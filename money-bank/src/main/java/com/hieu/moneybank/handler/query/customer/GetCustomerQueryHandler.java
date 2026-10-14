@@ -2,13 +2,10 @@ package com.hieu.moneybank.handler.query.customer;
 
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
-import com.hieu.moneybank.domain.Customer;
+import com.hieu.moneybank.client.CorebankClient;
 import com.hieu.moneybank.dto.response.CustomerResponseDTO;
-import com.hieu.moneybank.exception.NotFoundException;
-import com.hieu.moneybank.repository.CustomerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
@@ -17,13 +14,10 @@ public class GetCustomerQueryHandler implements QueryHandler<GetCustomerQueryHan
     public record GetCustomerQuery(String cifNumber) implements Query<CustomerResponseDTO> {
     }
 
-    private final CustomerRepository customers;
+    private final CorebankClient corebankClient;
 
     @Override
-    @Transactional(readOnly = true)
     public CustomerResponseDTO handle(GetCustomerQuery query) {
-        Customer customer = customers.findById(query.cifNumber().toUpperCase())
-                .orElseThrow(() -> new NotFoundException("CIF not found: " + query.cifNumber()));
-        return CustomerResponseDTO.from(customer);
+        return corebankClient.getCustomer(query.cifNumber().toUpperCase());
     }
 }

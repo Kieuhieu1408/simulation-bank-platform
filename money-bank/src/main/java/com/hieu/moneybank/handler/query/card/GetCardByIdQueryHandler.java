@@ -2,13 +2,10 @@ package com.hieu.moneybank.handler.query.card;
 
 import com.hieu.common.cqrs.Query;
 import com.hieu.common.cqrs.QueryHandler;
-import com.hieu.moneybank.domain.BankCard;
+import com.hieu.moneybank.client.CorebankClient;
 import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
-import com.hieu.moneybank.exception.NotFoundException;
-import com.hieu.moneybank.repository.CardRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
@@ -17,13 +14,10 @@ public class GetCardByIdQueryHandler implements QueryHandler<GetCardByIdQueryHan
     public record GetCardByIdQuery(String cardId) implements Query<IssueCardResponseDTO> {
     }
 
-    private final CardRepository cards;
+    private final CorebankClient corebankClient;
 
     @Override
-    @Transactional(readOnly = true)
     public IssueCardResponseDTO handle(GetCardByIdQuery query) {
-        BankCard card = cards.findById(query.cardId())
-                .orElseThrow(() -> new NotFoundException("Card not found: " + query.cardId()));
-        return IssueCardResponseDTO.from(card);
+        return corebankClient.getCard(query.cardId());
     }
 }

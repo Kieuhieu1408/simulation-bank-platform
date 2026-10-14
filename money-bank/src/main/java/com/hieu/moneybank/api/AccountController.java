@@ -4,7 +4,7 @@ import com.hieu.moneybank.dto.request.AccountCreateRequestDTO;
 import com.hieu.moneybank.dto.response.AccountBalanceResponseDTO;
 import com.hieu.moneybank.dto.response.AccountResponseDTO;
 import com.hieu.moneybank.dto.response.IssueCardResponseDTO;
-import com.hieu.moneybank.dto.response.TransferResponseDTO;
+import com.hieu.moneybank.dto.response.TransactionHistoryItemDTO;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -29,7 +29,7 @@ public interface AccountController {
     ResponseEntity<IssueCardResponseDTO> issueCard(@PathVariable String id);
 
     @GetMapping("/{id}/transactions")
-    ResponseEntity<Page<TransferResponseDTO>> history(
+    ResponseEntity<Page<TransactionHistoryItemDTO>> history(
             @PathVariable String id,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,

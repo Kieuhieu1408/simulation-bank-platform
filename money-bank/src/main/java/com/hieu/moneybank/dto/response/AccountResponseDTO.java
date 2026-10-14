@@ -1,7 +1,6 @@
 package com.hieu.moneybank.dto.response;
 
 import com.hieu.common.constant.AccountStatus;
-import com.hieu.moneybank.domain.Account;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,16 +21,4 @@ public class AccountResponseDTO {
     private BigDecimal balance;
     private AccountStatus status;
     private Instant createdAt;
-
-    public static AccountResponseDTO from(Account a) {
-        return AccountResponseDTO.builder()
-                .accountId(a.getId())
-                .accountNumber(a.getAccountNumber())
-                .cifNumber(a.getCustomer().getCifNumber())
-                .currency(a.getCurrency())
-                .balance(a.getBalance())
-                .status(a.getStatus())
-                .createdAt(a.getCreatedAt())
-                .build();
-    }
 }

@@ -40,9 +40,9 @@ SRD không thay thế tài liệu API contract, physical data model/DDL, threat 
 
 | Mã | Quyết định                                                                                                                                                                 | Lý do |
 |---|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
-| ADR-01 | Corebank là system of record cho tài khoản, số dư, hold và bút toán                                                                                                        | Không tạo hai nguồn sự thật tài chính |
+| ADR-01 | Corebank là system of record cho tài khoản, số dư, hold và bút toán theo kiến trúc Event Sourcing + CQRS; Money Bank là Channel/BFF không lưu trữ thực thể core | Không tạo hai nguồn sự thật tài chính; tách biệt ranh giới giữa kênh giao tiếp và sổ cái ngân hàng |
 | ADR-02 | Mỗi service sở hữu database riêng; không đọc/ghi chéo database                                                                                                             | Giảm coupling và tránh phá vỡ invariant |
-| ADR-03 | Chuyển tiền chống trùng bằng DB durable tại Money Bank và unique external reference tại Corebank; Redis chỉ là fast-path tùy chọn                                              | Correctness không được phụ thuộc Redis/distributed lock |
+| ADR-03 | Chuyển tiền chống trùng bằng server-side idempotency key và DB durable tại Money Bank kết hợp unique external reference tại Corebank; Redis chỉ là fast-path tùy chọn       | Correctness không được phụ thuộc Redis/distributed lock; bảo vệ hệ thống khi client không sinh hoặc sinh sai key |
 | ADR-04 | `workflowId` định danh toàn bộ workflow; `transactionId` định danh giao dịch; `idempotencyKey` định danh ý định của client                                                 | Không dùng một khóa cho nhiều mục đích |
 | ADR-05 | Không retry mù lệnh chuyển tiền sau timeout                                                                                                                                | Timeout không đồng nghĩa giao dịch thất bại |
 | ADR-06 | Audit tài chính là dữ liệu nghiệp vụ append-only; application log không phải audit trail                                                                                   | Bảo đảm truy vết, retention và kiểm soát truy cập |
@@ -61,14 +61,14 @@ SRD không thay thế tài liệu API contract, physical data model/DDL, threat 
 
 | Thành phần | Trách nhiệm | Dữ liệu sở hữu |
 |---|---|---|
-| Mobile/Web | Kênh khách hàng, sinh và tái sử dụng idempotency key khi retry cùng một ý định | Trạng thái UI tạm thời |
+| Mobile/Web | Kênh khách hàng; gửi ý định giao dịch (Proposal hoặc Direct transfer), có thể gửi kèm Idempotency-Key header khi retry cùng một ý định | Trạng thái UI tạm thời |
 | API Gateway/WAF | TLS termination, rate limit, request size, routing, coarse authentication | Không sở hữu dữ liệu nghiệp vụ |
-| Money Bank | API khách hàng; chuyển tiền; query tài khoản/giao dịch; transaction workflow và reconciliation | Transaction, idempotency record, workflow, audit liên quan chuyển tiền, outbox |
+| Money Bank | Channel / BFF Service: API khách hàng; điều phối đề xuất chuyển tiền (`TransferProposal`); tự sinh server-side idempotency key; ủy quyền toàn bộ truy vấn/thao tác tài khoản, số dư, sao kê, thẻ sang Corebank qua S2S WebClient | `transfer_proposals` (Đề xuất chuyển tiền), `outbox_event` (Transactional Outbox). Không lưu trữ thực thể core (Account, Customer, Card, Ledger) |
 | Profile Service | Proposal tài khoản và approval workflow | Proposal, proposal log, outbox |
 | CMS Angular + CMS Backend | Kênh GDV/vận hành; backend điều phối request từ CMS tới Profile | Không sở hữu Proposal |
 | Notification Service | Inbox, push/SMS/email, template, preference, campaign/promotion delivery | Notification, delivery status, template, campaign read model |
 | Keycloak | Identity, realm/client/role, user session, token issuance/revocation | Identity và session IAM |
-| Corebank | Tài khoản, số dư, hold/reservation, ledger, transfer reference | Dữ liệu tài chính chính thức |
+| Corebank | System of Record (SoR) cho Tài khoản, Khách hàng, Thẻ, Số dư, Ledger, Hạch toán bút toán chuyển tiền theo Event Sourcing + CQRS | Event Store (`domain_events`, `aggregate_snapshots`), Read Projections (`account_view`, `transaction_history_view`, `transfer_view`) |
 | Kafka | Truyền domain/integration event | Event theo retention, không phải system of record |
 | Redis | Idempotency fast-path, distributed coordination ngắn hạn, cache | Dữ liệu tạm thời, có thể mất |
 | Observability stack | Thu thập metric/log/trace và cảnh báo | Telemetry, không chứa bí mật/audit gốc |
@@ -127,7 +127,7 @@ Quy tắc:
 
 | Trường | Nguồn tạo | Phạm vi/ý nghĩa | Quy tắc |
 |---|---|---|---|
-| `idempotencyKey` | Client | Một ý định command của một user | UUID/ULID, unique theo `customerId + operation`; retry phải dùng lại |
+| `idempotencyKey` | Server-side (Money Bank) hoặc Client (tuỳ chọn) | Một ý định command chuyển tiền | Trong flow 2 bước (Proposal), BE tự động sinh `proposalId` (UUID v4) làm `idempotencyKey`; trong flow 1 bước (Direct), FE có thể truyền hoặc BE tự sinh UUID v4; Corebank dùng làm unique external reference |
 | `requestHash` | Money Bank | Hash canonical payload | Cùng key khác hash trả `409 IDEMPOTENCY_CONFLICT` |
 | `transactionId` | Money Bank | Định danh giao dịch bất biến | Sinh một lần sau khi claim idempotency thành công |
 | `workflowId` | Money Bank/Profile | Một workflow xử lý/recovery | Truyền xuyên service/event/job; không dùng làm idempotency key |
@@ -201,7 +201,27 @@ Mọi transition phải kiểm tra `currentStatus + version`; không cho phép c
 | TRF-INV-007 | SUCCESS chỉ được trả khi Corebank xác nhận trạng thái cuối thành công. |
 | TRF-INV-008 | Timeout/connection reset sau khi gửi lệnh phải là `UNKNOWN/RECONCILING`, không phải `FAILED`. |
 
-### 6.2. Các lớp idempotency
+### 6.2. Các lớp idempotency và cơ chế sinh khóa server-side
+
+Hệ thống hỗ trợ 2 mô hình chuyển tiền với cơ chế bảo vệ chống duplicate transaction:
+
+#### 6.2.1. Luồng 2 bước Transfer Proposal (Khuyến nghị cho Mobile/Web)
+1. **Khởi tạo Đề xuất (`POST /api/v1/transfers/proposals`)**:
+   - Client chỉ gửi ý định chuyển tiền (`sourceAccountId`, `destinationAccountId`, `amount`, `currency`, `description`). Client **không cần tự sinh** idempotency key.
+   - Money Bank xác thực tài khoản nguồn/đích qua `CorebankClient.getAccount()`: kiểm tra trạng thái `ACTIVE`, kiểm tra CIF của tài khoản nguồn khớp với JWT của user đăng nhập, kiểm tra currency khớp với tài khoản nguồn.
+   - Money Bank tự động sinh `proposalId = UUID.randomUUID().toString()` và gán `idempotencyKey = proposalId`.
+   - Lưu vào bảng `transfer_proposals` với trạng thái `PENDING`.
+2. **Xác nhận Đề xuất (`POST /api/v1/transfers/proposals/{id}/confirm`)**:
+   - Client gửi xác nhận sau khi vượt qua bước xác thực OTP/Sinh trắc học.
+   - Money Bank sử dụng chính `proposalId` (đã là `idempotencyKey`) làm khóa idempotency duy nhất khi chuyển tiếp lệnh sang `CorebankClient.executeTransfer()`.
+   - Corebank Event Sourcing thực thi hạch toán đảm bảo không lặp theo `idempotencyKey`. Sau khi thành công, Money Bank cập nhật proposal sang `CONFIRMED`.
+
+#### 6.2.2. Luồng 1 bước Direct Transfer (`POST /api/v1/transfers`)
+- Header `Idempotency-Key` hoặc trường `idempotencyKey` trong body là **tuỳ chọn (optional)**:
+  - Nếu Client truyền: Backend tôn trọng và sử dụng key này.
+  - Nếu Client không truyền: `TransferCommandHandler` tự động sinh UUID v4 server-side (`UUID.randomUUID().toString()`) trước khi gửi sang `CorebankClient`.
+
+#### 6.2.3. Các lớp bảo vệ Idempotency
 
 **Lớp 1 — Redis fast-path tùy chọn**
 
@@ -211,21 +231,16 @@ Mọi transition phải kiểm tra `currentStatus + version`; không cho phép c
 - Redis down: hệ thống vẫn an toàn nhờ DB; có thể giảm hiệu năng nhưng không bỏ kiểm tra.
 - MVP có thể chưa triển khai Redis; chỉ thêm khi load test chứng minh cần chặn duplicate burst trước DB.
 
-**Lớp 2 — durable idempotency trong Money Bank DB**
+**Lớp 2 — durable idempotency trong Money Bank DB (`transfer_proposals` / Outbox)**
 
-- Unique constraint `(customer_id, operation, idempotency_key)`.
-- Lưu `request_hash`, `transaction_id`, `workflow_id`, trạng thái, response code/body đã sanitize, timestamps và expiry/retention.
-- Không dùng `SELECT`/check-then-act làm thao tác quyết định. Claim bằng atomic insert dựa trên unique constraint; request thắng tạo idempotency/workflow record trong transaction phù hợp.
-- Với Oracle/JPA, không sao chép MySQL `INSERT IGNORE`. Có thể `saveAndFlush`/native claim để constraint được kiểm tra sớm; duplicate phải được xử lý ngoài transaction đã rollback rồi đọc record hiện có bằng transaction mới.
-- Cùng key/cùng hash: trả kết quả hiện tại hoặc response đã lưu; đang chạy trả `202 PROCESSING`.
-- Cùng key/khác hash: trả `409 IDEMPOTENCY_CONFLICT`.
-- Record tài chính không xóa theo Redis TTL; retention theo quy định tra soát.
+- Unique constraint trên `idempotency_key` tại bảng `transfer_proposals`.
+- Ghi nhận trạng thái `PENDING` -> `CONFIRMED` / `REJECTED`.
+- Với Oracle/JPA, không sao chép MySQL `INSERT IGNORE`. Duplicate claim được xử lý an toàn ngăn chặn ORA-00001 trả về client.
 
-**Lớp 3 — Corebank operation id**
+**Lớp 3 — Corebank Event Sourcing operation id**
 
-- Gửi `externalTransactionId = transactionId` do Money Bank sinh; không chuyển raw client idempotency key thành định danh Corebank nếu không có contract rõ ràng.
-- Corebank phải unique hóa reference và cung cấp API query theo reference.
-- Nếu Corebank không hỗ trợ hai khả năng này, phase 1 chưa đủ điều kiện an toàn để tự động retry sau ambiguous failure; phải dùng manual reconciliation.
+- Gửi `idempotencyKey` (server-generated hoặc client-provided) sang Corebank.
+- Corebank Event Sourcing lưu vết `idempotency_key` trong `transfer_view` và Event Store, đảm bảo lệnh trùng chỉ trả lại kết quả giao dịch ban đầu, không hạch toán lặp.
 
 **Lớp Kafka consumer — Inbox bắt buộc khi có consumer**
 
@@ -239,34 +254,38 @@ Mọi transition phải kiểm tra `currentStatus + version`; không cho phép c
 ```mermaid
 sequenceDiagram
   actor U as Mobile/Web
-  participant M as Money Bank
-  participant R as Redis
-  participant D as Money Bank DB
-  participant C as Corebank
+  participant M as Money Bank (BFF)
+  participant D as Money Bank DB (transfer_proposals)
+  participant C as Corebank (Event Store + Views)
   participant K as Kafka
 
-  U->>M: POST /transfers + Idempotency-Key
-  M->>R: SET NX key/requestHash/TTL
-  M->>D: Claim durable key + create transaction/workflow
-  D-->>M: transactionId, PROCESSING
-  M->>C: Transfer(externalTransactionId)
+  Note over U,M: Luồng 2 bước: Transfer Proposal + Confirm
+  U->>M: POST /transfers/proposals (source, dest, amount, currency)
+  M->>C: GET /api/v1/accounts/{sourceId} (verify CIF & ACTIVE)
+  M->>C: GET /api/v1/accounts/{destId} (verify ACTIVE)
+  M->>M: Gen proposalId (UUID) & idempotencyKey = proposalId
+  M->>D: Save Proposal (PENDING)
+  M-->>U: 201 Created (proposalId, PENDING)
+  
+  U->>M: POST /transfers/proposals/{id}/confirm (OTP/PIN verified)
+  M->>C: POST /api/v1/transfers (idempotencyKey = proposalId)
   alt Corebank SUCCESS
-    C-->>M: SUCCESS + corebankReference
-    M->>D: Persist SUCCESS + audit + outbox
+    C-->>M: 200 SUCCESS + transactionId
+    M->>D: Update Proposal (CONFIRMED) + Outbox
     M-->>U: 200 SUCCESS
     D-->>K: Publish outbox event
   else Corebank business failure
-    C-->>M: FAILED(final reason)
-    M->>D: Persist FAILED + audit + outbox
-    M-->>U: 4xx/422 FAILED
+    C-->>M: 4xx/422 FAILED
+    M->>D: Update Proposal (REJECTED)
+    M-->>U: 4xx FAILED
   else Timeout / ambiguous response
-    M->>D: Persist UNKNOWN/RECONCILING
-    M-->>U: 202 UNKNOWN + transactionId
-    M->>C: Query by externalTransactionId
+    M->>D: Proposal UNKNOWN/RECONCILING
+    M-->>U: 202 ACCEPTED (proposalId)
+    M->>C: Query by idempotencyKey
   end
 ```
 
-Ba giai đoạn ở đây là: (1) tiếp nhận và claim duy nhất, (2) thực thi nguyên tử tại Corebank, (3) chốt kết quả hoặc reconciliation. Đây không phải distributed transaction 2PC.
+Ba giai đoạn ở đây là: (1) tiếp nhận, thẩm định CIF và sinh khóa duy nhất tại Money Bank, (2) thực thi hạch toán nguyên tử tại Corebank Event Store, (3) chốt kết quả và phát tán integration event qua Outbox. Đây không phải distributed transaction 2PC.
 
 ### 6.4. Hold tiền và chống overspend
 
@@ -429,34 +448,28 @@ Ràng buộc:
 
 ## 10. Dữ liệu, audit và logging
 
-### 10.1. Lưu dữ liệu giao dịch
+### 10.1. Lưu dữ liệu giao dịch và ranh giới Channel Service vs SoR
 
-Corebank là system of record và nguồn lịch sử giao dịch tài chính. Money Bank không tạo một bản sao lịch sử tài chính đầy đủ; Database của Money Bank chỉ lưu trạng thái kỹ thuật tối thiểu cần cho idempotency, workflow, reconciliation và Outbox.
+Corebank là System of Record (SoR) và nguồn sự thật duy nhất cho tài khoản, khách hàng, thẻ, số dư và lịch sử giao dịch tài chính (theo kiến trúc Event Sourcing + CQRS). Money Bank là **Channel / BFF Service**:
+- **Không sở hữu hoặc lưu trữ các entity nghiệp vụ Core**: Các bảng quan hệ cũ (`accounts`, `bank_transactions`, `customers`, `cards`, `users`) không thuộc về Money Bank và đã được loại bỏ hoàn toàn khỏi domain/repository của Money Bank.
+- **Dữ liệu do Money Bank sở hữu**: Money Bank chỉ sở hữu và quản lý bảng Đề xuất chuyển tiền (`transfer_proposals`) phục vụ luồng nghiệp vụ 2 bước của kênh và bảng Transactional Outbox (`outbox_event`).
+- **Validation Schema Startup**: Khi khởi động với `spring.jpa.hibernate.ddl-auto: validate`, Hibernate chỉ kiểm tra sự tồn tại của `transfer_proposals` và `outbox_event`, khắc phục triệt để lỗi khởi động `SchemaManagementException: Schema validation: missing table [accounts]`.
 
-**Oracle (hoặc H2 cho môi trường test)** là lựa chọn chính thức cho cơ sở dữ liệu của Money Bank. Hệ thống sử dụng kiến trúc phân tầng (Layered Architecture) với JPA/Hibernate và Flyway để quản lý schema, đảm bảo tính ACID, toàn vẹn dữ liệu cho Idempotency và các giao dịch.
+**Oracle (hoặc H2 cho môi trường test)** là cơ sở dữ liệu chính thức của Money Bank. Hệ thống sử dụng JPA/Hibernate và kết nối an toàn với Oracle DB.
 
-Các entity logic tối thiểu:
+Các entity JPA do Money Bank sở hữu:
+- `transfer_proposals` (`TransferProposal.java`): Lưu trữ đề xuất chuyển tiền, mã idempotency key (trùng với proposalId), trạng thái (`PENDING`, `CONFIRMED`, `REJECTED`), số tiền, loại tiền, CIF người tạo và tài khoản nguồn/đích.
+- `outbox_event` (`OutboxEvent.java`): Ghi nhận các event integration được xuất bản ra Kafka sau khi giao dịch hoàn tất.
 
-- `transfer_transaction` (workflow/reference tối thiểu, không phải ledger/history chính thức)
-- `idempotency_record`
-- `workflow_execution` / `workflow_step`
-- `outbox_event`
-- `inbox_event`
-
-Audit projection của Money Bank có thể lưu tại Database theo ADR-10, nhưng phải được tạo từ Outbox đã ghi cùng local transaction với state change; không dual-write trực tiếp relational DB + MongoDB trong use case.
-
-Mọi bảng có `created_at`, `updated_at` theo UTC, version khi cần optimistic locking và index cho truy vấn vận hành. Amount dùng decimal/number scale xác định; currency theo ISO 4217.
+Mọi bảng có `created_at`, `updated_at` theo UTC, version cho optimistic locking và index cho truy vấn vận hành. Amount dùng decimal scale xác định; currency theo ISO 4217.
 
 ### 10.2. Mô hình dữ liệu logic Money Bank
 
 | Entity | Khóa và quan hệ chính | Dữ liệu tối thiểu | Ràng buộc quan trọng |
 |---|---|---|---|
-| `transfer_transaction` | PK `transaction_id`; liên kết `workflow_id` | customer, source/destination token hoặc masked reference, amount, currency, description đã sanitize, status, Corebank reference, timestamps | Unique `transaction_id`; amount dùng fixed decimal; không lưu raw authentication data |
-| `idempotency_record` | PK kỹ thuật; FK/unique reference tới transaction | customer, operation, idempotency key, request hash, response snapshot đã sanitize, expiry | Unique `(customer_id, operation, idempotency_key)`; immutable key/hash sau claim |
-| `workflow_execution` | PK `workflow_id`; FK transaction | current step/status, attempt, next retry, lease owner/expiry, last safe error code | Index `(status, next_retry_at)`; optimistic version |
-| `audit_event` (Database projection) | Unique `event_id`; reference transaction/workflow | actor/subject, service actor, action, before/after status, reason, correlation/trace, occurred at | Append-only; idempotent consume từ Outbox; không update/delete qua application role |
+| `transfer_proposals` | PK `id` (UUID); `idempotency_key` | initiator_customer_id, source_account_id, destination_account_id, amount, currency, description, status, timestamps | Unique `idempotency_key`; amount dùng fixed decimal; kiểm tra quyền sở hữu CIF trước khi lưu |
 | `outbox_event` | PK `event_id`; aggregate reference | type, schema version, payload tối thiểu, occurred/published at, attempt | Ghi cùng transaction nghiệp vụ; index unpublished records |
-| `inbox_event` | PK kỹ thuật | consumer, event ID, processed at, result | Unique `(consumer, event_id)` |
+| `inbox_event` (nếu có consumer) | PK kỹ thuật | consumer, event ID, processed at, result | Unique `(consumer, event_id)` |
 
 Quy tắc dữ liệu:
 

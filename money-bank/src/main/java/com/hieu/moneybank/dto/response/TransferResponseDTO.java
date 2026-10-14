@@ -1,7 +1,6 @@
 package com.hieu.moneybank.dto.response;
 
 import com.hieu.common.constant.TransactionStatus;
-import com.hieu.moneybank.domain.BankTransaction;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,17 +22,4 @@ public class TransferResponseDTO {
     private String currency;
     private String description;
     private Instant createdAt;
-
-    public static TransferResponseDTO from(BankTransaction t) {
-        return TransferResponseDTO.builder()
-                .transactionId(t.getId())
-                .status(t.getStatus())
-                .sourceAccountId(t.getSourceAccount().getId())
-                .destinationAccountId(t.getDestinationAccount().getId())
-                .amount(t.getAmount())
-                .currency(t.getCurrency())
-                .description(t.getDescription())
-                .createdAt(t.getCreatedAt())
-                .build();
-    }
 }

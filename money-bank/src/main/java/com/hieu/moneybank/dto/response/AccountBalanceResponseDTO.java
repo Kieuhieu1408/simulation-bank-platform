@@ -12,7 +12,19 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @Builder
 public class AccountBalanceResponseDTO {
-    private String accountId;
-    private String currency;
-    private BigDecimal balance;
+    private String     accountId;
+    private String     currency;
+    private BigDecimal actualBalance;
+    private BigDecimal availableBalance;
+
+    public AccountBalanceResponseDTO(String accountId, String currency, BigDecimal balance) {
+        this.accountId = accountId;
+        this.currency = currency;
+        this.actualBalance = balance;
+        this.availableBalance = balance;
+    }
+
+    public BigDecimal getBalance() {
+        return availableBalance != null ? availableBalance : actualBalance;
+    }
 }

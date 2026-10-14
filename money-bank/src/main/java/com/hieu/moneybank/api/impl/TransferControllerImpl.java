@@ -11,9 +11,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class TransferControllerImpl extends BaseController implements TransferController {
 
     @Override
-    // @CoreBankAuthorise(menuCode = "Transfer", action = "Create")
-    // @Backhut
-    public ResponseEntity<TransferResponseDTO> transfer(TransferRequestDTO request) {
+    public ResponseEntity<TransferResponseDTO> transfer(TransferRequestDTO request, String idempotencyKeyHeader) {
+        if ((request.getIdempotencyKey() == null || request.getIdempotencyKey().isBlank())
+                && idempotencyKeyHeader != null && !idempotencyKeyHeader.isBlank()) {
+            request.setIdempotencyKey(idempotencyKeyHeader);
+        }
         return execute(request, TransferResponseDTO.class);
     }
 }

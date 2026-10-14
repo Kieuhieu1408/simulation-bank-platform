@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 public interface TransferController {
 
     @PostMapping
-    ResponseEntity<TransferResponseDTO> transfer(@Valid @RequestBody TransferRequestDTO request);
-
+    ResponseEntity<TransferResponseDTO> transfer(
+            @Valid @RequestBody TransferRequestDTO request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader);
 }
