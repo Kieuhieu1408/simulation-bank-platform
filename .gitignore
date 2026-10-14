@@ -72,3 +72,5 @@ kubeconfig
 *.kubeconfig
 .terraform/
 *.tfstate*
+
+.devteam
