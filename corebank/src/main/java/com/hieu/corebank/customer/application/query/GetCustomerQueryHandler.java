@@ -1,6 +1,7 @@
 package com.hieu.corebank.customer.application.query;
 
 import com.hieu.common.cqrs.QueryHandler;
+import com.hieu.corebank.customer.api.dto.request.CustomerGetRequestDTO;
 import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
 import com.hieu.corebank.customer.domain.Customer;
 import com.hieu.corebank.customer.domain.CustomerRepository;
@@ -14,15 +15,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile({ProfileConstants.QUERY, ProfileConstants.ALL, ProfileConstants.TEST})
 @Component
 @RequiredArgsConstructor
-public class GetCustomerQueryHandler implements QueryHandler<GetCustomerQuery, CustomerResponseDTO> {
+public class GetCustomerQueryHandler implements QueryHandler<CustomerGetRequestDTO, CustomerResponseDTO> {
 
     private final CustomerRepository customers;
 
     @Override
     @Transactional(readOnly = true)
-    public CustomerResponseDTO handle(GetCustomerQuery query) {
-        Customer customer = customers.findById(query.cifNumber().toUpperCase())
-                .orElseThrow(() -> new NotFoundException("CIF not found: " + query.cifNumber()));
+    public CustomerResponseDTO handle(CustomerGetRequestDTO query) {
+        Customer customer = customers.findById(query.getCifNumber().toUpperCase())
+                .orElseThrow(() -> new NotFoundException("CIF not found: " + query.getCifNumber()));
         return CustomerResponseDTO.from(customer);
     }
 }

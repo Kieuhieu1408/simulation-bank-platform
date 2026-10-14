@@ -3,15 +3,15 @@ package com.hieu.corebank.card;
 import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
 import com.hieu.corebank.account.application.command.AccountHandler;
+import com.hieu.corebank.card.api.dto.request.CardGetRequestDTO;
 import com.hieu.corebank.card.api.dto.request.IssueCardRequestDTO;
 import com.hieu.corebank.card.api.dto.response.IssueCardResponseDTO;
 import com.hieu.corebank.card.application.command.CardHandler;
-import com.hieu.corebank.card.application.query.GetCardByIdQuery;
 import com.hieu.corebank.card.application.query.GetCardByIdQueryHandler;
 import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
+import com.hieu.corebank.customer.api.dto.request.CustomerGetRequestDTO;
 import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
 import com.hieu.corebank.customer.application.command.CustomerHandler;
-import com.hieu.corebank.customer.application.query.GetCustomerQuery;
 import com.hieu.corebank.customer.application.query.GetCustomerQueryHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -57,8 +57,8 @@ class DataMaskingAndPrivacyComplianceTest {
         CustomerResponseDTO custRes = customerHandler.handle(custReq);
         assertThat(custRes.getNationalId()).isEqualTo("012345****01");
 
-        // Truy vấn lại qua GetCustomerQuery cũng phải masked
-        CustomerResponseDTO queriedCust = getCustomerQueryHandler.handle(new GetCustomerQuery(custRes.getCifNumber()));
+        // Truy vấn lại qua CustomerGetRequestDTO cũng phải masked
+        CustomerResponseDTO queriedCust = getCustomerQueryHandler.handle(new CustomerGetRequestDTO(custRes.getCifNumber()));
         assertThat(queriedCust.getNationalId()).isEqualTo("012345****01");
 
         // 2. Tạo Account
@@ -78,8 +78,8 @@ class DataMaskingAndPrivacyComplianceTest {
         // Ví dụ: 9704-12XX-XXXX-3456 (4 số đầu - 2 số tiếp theo + XX-XXXX - 4 số cuối)
         assertThat(cardRes.getMaskedCardNumber()).matches("^[0-9]{4}-[0-9]{2}XX-XXXX-[0-9]{4}$");
 
-        // Truy vấn lại qua GetCardByIdQuery cũng phải masked
-        IssueCardResponseDTO queriedCard = getCardByIdHandler.handle(new GetCardByIdQuery(cardRes.getCardId()));
+        // Truy vấn lại qua CardGetRequestDTO cũng phải masked
+        IssueCardResponseDTO queriedCard = getCardByIdHandler.handle(new CardGetRequestDTO(cardRes.getCardId()));
         assertThat(queriedCard.getMaskedCardNumber()).isEqualTo(cardRes.getMaskedCardNumber());
 
         // Đảm bảo không có CVV trong Response DTO

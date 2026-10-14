@@ -5,13 +5,16 @@ import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
 import com.hieu.corebank.account.application.port.CustomerDirectory;
 import com.hieu.corebank.account.domain.AccountAggregate;
+import com.hieu.corebank.account.domain.AccountNumberGenerator;
+import com.hieu.corebank.account.domain.AccountRepository;
 import com.hieu.corebank.shared.constant.ProfileConstants;
+import com.hieu.corebank.shared.domain.AccountId;
+import com.hieu.corebank.shared.domain.Money;
 import com.hieu.corebank.shared.domain.NotFoundException;
-import com.hieu.corebank.shared.infrastructure.eventsourcing.EventStore;
+import com.hieu.corebank.shared.domain.TransferId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +22,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * AccountHandler V2 — Event Sourcing edition.
+ * AccountHandler — Use Case xử lý tài khoản thanh toán và các nghiệp vụ sổ cái (Level 2 & Level 3 Validation).
  */
 @Slf4j
 @Profile({ProfileConstants.COMMAND, ProfileConstants.ALL, ProfileConstants.TEST})
@@ -28,8 +31,8 @@ import java.util.UUID;
 public class AccountHandler implements CommandHandler<AccountCreateRequestDTO, AccountResponseDTO> {
 
     private final CustomerDirectory customerDirectory;
-    private final EventStore        eventStore;
-    private final JdbcClient        jdbc;
+    private final AccountRepository accountRepository;
+    private final AccountNumberGenerator accountNumberGenerator;
 
     @Override
     @Transactional
@@ -44,7 +47,7 @@ public class AccountHandler implements CommandHandler<AccountCreateRequestDTO, A
                 : command.getInitialBalance();
 
         String accountId     = UUID.randomUUID().toString();
-        String accountNumber = nextAccountNumber();
+        String accountNumber = accountNumberGenerator.nextAccountNumber();
 
         // Tạo aggregate — sinh AccountCreatedEvent
         AccountAggregate account = AccountAggregate.create(
@@ -55,7 +58,7 @@ public class AccountHandler implements CommandHandler<AccountCreateRequestDTO, A
         );
 
         // Ghi event + outbox vào DB trong cùng transaction
-        eventStore.append(account);
+        accountRepository.save(account);
 
         log.info("Account created: accountId={} accountNumber={} cif={}",
                 accountId, accountNumber, cif);
@@ -71,10 +74,39 @@ public class AccountHandler implements CommandHandler<AccountCreateRequestDTO, A
                 .build();
     }
 
-    private String nextAccountNumber() {
-        long seq = jdbc.sql("SELECT account_number_seq.NEXTVAL FROM DUAL")
-                .query(Long.class)
-                .single();
-        return "10" + String.format("%010d", seq);
+    @Transactional
+    public void reserveFunds(AccountId accountId, TransferId transferId, Money amount) {
+        AccountAggregate account = accountRepository.load(accountId.value());
+        account.reserve(transferId, amount);
+        accountRepository.save(account);
+        log.info("Reserved funds on accountId={}, transferId={}, amount={}",
+                accountId.value(), transferId.value(), amount);
+    }
+
+    @Transactional
+    public void creditFunds(AccountId accountId, TransferId transferId, Money amount) {
+        AccountAggregate account = accountRepository.load(accountId.value());
+        account.credit(transferId, amount);
+        accountRepository.save(account);
+        log.info("Credited funds to accountId={}, transferId={}, amount={}",
+                accountId.value(), transferId.value(), amount);
+    }
+
+    @Transactional
+    public void settleReservation(AccountId accountId, TransferId transferId) {
+        AccountAggregate account = accountRepository.load(accountId.value());
+        account.settle(transferId);
+        accountRepository.save(account);
+        log.info("Settled reservation on accountId={}, transferId={}",
+                accountId.value(), transferId.value());
+    }
+
+    @Transactional
+    public void releaseReservation(AccountId accountId, TransferId transferId, String reason) {
+        AccountAggregate account = accountRepository.load(accountId.value());
+        account.release(transferId, reason);
+        accountRepository.save(account);
+        log.info("Released reservation on accountId={}, transferId={}, reason={}",
+                accountId.value(), transferId.value(), reason);
     }
 }

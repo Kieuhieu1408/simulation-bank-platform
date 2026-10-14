@@ -1,6 +1,7 @@
 package com.hieu.corebank.account.application.query;
 
 import com.hieu.common.cqrs.QueryHandler;
+import com.hieu.corebank.account.api.dto.request.AccountBalanceRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountBalanceResponseDTO;
 import com.hieu.corebank.account.infrastructure.projection.AccountView;
 import com.hieu.corebank.account.infrastructure.projection.AccountViewRepository;
@@ -12,21 +13,21 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * V2: Đọc từ account_view (Read Side) thay vì bảng accounts (Write Side).
+ * GetAccountBalanceQueryHandler — Truy vấn số dư tài khoản từ account_view (Read Side).
  */
 @Profile({ProfileConstants.QUERY, ProfileConstants.ALL, ProfileConstants.TEST})
 @Component
 @RequiredArgsConstructor
 public class GetAccountBalanceQueryHandler
-        implements QueryHandler<GetAccountBalanceQuery, AccountBalanceResponseDTO> {
+        implements QueryHandler<AccountBalanceRequestDTO, AccountBalanceResponseDTO> {
 
     private final AccountViewRepository accountViews;
 
     @Override
     @Transactional(readOnly = true)
-    public AccountBalanceResponseDTO handle(GetAccountBalanceQuery query) {
-        AccountView view = accountViews.findById(query.accountId())
-                .orElseThrow(() -> new NotFoundException("Account not found: " + query.accountId()));
+    public AccountBalanceResponseDTO handle(AccountBalanceRequestDTO query) {
+        AccountView view = accountViews.findById(query.getAccountId())
+                .orElseThrow(() -> new NotFoundException("Account not found: " + query.getAccountId()));
 
         return AccountBalanceResponseDTO.builder()
                 .accountId(view.getAccountId())

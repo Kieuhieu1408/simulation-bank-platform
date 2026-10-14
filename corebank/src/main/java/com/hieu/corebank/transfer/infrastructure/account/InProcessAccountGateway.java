@@ -1,6 +1,6 @@
 package com.hieu.corebank.transfer.infrastructure.account;
 
-import com.hieu.corebank.account.application.command.*;
+import com.hieu.corebank.account.application.command.AccountHandler;
 import com.hieu.corebank.shared.domain.AccountId;
 import com.hieu.corebank.shared.domain.Money;
 import com.hieu.corebank.shared.domain.TransferId;
@@ -25,30 +25,27 @@ public class InProcessAccountGateway implements AccountGateway {
 
     private static final int MAX_RETRIES = 10;
 
-    private final ReserveFundsCommandHandler reserveFundsHandler;
-    private final CreditFundsCommandHandler creditFundsHandler;
-    private final SettleReservationCommandHandler settleReservationHandler;
-    private final ReleaseReservationCommandHandler releaseReservationHandler;
+    private final AccountHandler accountHandler;
     private final SagaMetricsCollector metricsCollector;
 
     @Override
     public void reserveFunds(AccountId accountId, TransferId transferId, Money amount) {
-        executeWithRetry(() -> reserveFundsHandler.handle(new ReserveFundsCommand(accountId, transferId, amount)));
+        executeWithRetry(() -> accountHandler.reserveFunds(accountId, transferId, amount));
     }
 
     @Override
     public void creditFunds(AccountId accountId, TransferId transferId, Money amount) {
-        executeWithRetry(() -> creditFundsHandler.handle(new CreditFundsCommand(accountId, transferId, amount)));
+        executeWithRetry(() -> accountHandler.creditFunds(accountId, transferId, amount));
     }
 
     @Override
     public void settleReservation(AccountId accountId, TransferId transferId) {
-        executeWithRetry(() -> settleReservationHandler.handle(new SettleReservationCommand(accountId, transferId)));
+        executeWithRetry(() -> accountHandler.settleReservation(accountId, transferId));
     }
 
     @Override
     public void releaseReservation(AccountId accountId, TransferId transferId, String reason) {
-        executeWithRetry(() -> releaseReservationHandler.handle(new ReleaseReservationCommand(accountId, transferId, reason)));
+        executeWithRetry(() -> accountHandler.releaseReservation(accountId, transferId, reason));
     }
 
     private void executeWithRetry(Runnable action) {

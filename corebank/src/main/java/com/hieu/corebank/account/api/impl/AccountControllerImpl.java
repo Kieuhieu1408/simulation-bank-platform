@@ -7,9 +7,9 @@ import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountBalanceResponseDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
 import com.hieu.corebank.account.api.dto.response.TransactionHistoryItemDTO;
-import com.hieu.corebank.account.application.query.GetAccountBalanceQuery;
-import com.hieu.corebank.account.application.query.GetAccountByIdQuery;
-import com.hieu.corebank.account.application.query.GetTransactionHistoryQuery;
+import com.hieu.corebank.account.api.dto.request.AccountBalanceRequestDTO;
+import com.hieu.corebank.account.api.dto.request.AccountGetRequestDTO;
+import com.hieu.corebank.account.api.dto.request.TransactionHistoryRequestDTO;
 import com.hieu.corebank.card.api.dto.request.IssueCardRequestDTO;
 import com.hieu.corebank.card.api.dto.response.IssueCardResponseDTO;
 import com.hieu.corebank.shared.constant.ProfileConstants;
@@ -36,13 +36,13 @@ public class AccountControllerImpl extends BaseController implements AccountCont
     @Override
     @CoreBankAuthorization(menuCode = "account_management", action = ActionType.READ)
     public ResponseEntity<AccountResponseDTO> get(String id) {
-        return executeQuery(new GetAccountByIdQuery(id), AccountResponseDTO.class);
+        return executeQuery(new AccountGetRequestDTO(id), AccountResponseDTO.class);
     }
 
     @Override
     @CoreBankAuthorization(menuCode = "account_management", action = ActionType.READ)
     public ResponseEntity<AccountBalanceResponseDTO> balance(String id) {
-        return executeQuery(new GetAccountBalanceQuery(id), AccountBalanceResponseDTO.class);
+        return executeQuery(new AccountBalanceRequestDTO(id), AccountBalanceResponseDTO.class);
     }
 
     @Override
@@ -57,7 +57,7 @@ public class AccountControllerImpl extends BaseController implements AccountCont
     public ResponseEntity<Page<TransactionHistoryItemDTO>> history(
             String id, Instant from, Instant to, int page, int size) {
         return executeQuery(
-                new GetTransactionHistoryQuery(id, from, to,
+                new TransactionHistoryRequestDTO(id, from, to,
                         PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "occurredAt"))),
                 (Class<Page<TransactionHistoryItemDTO>>) (Class<?>) Page.class
         );

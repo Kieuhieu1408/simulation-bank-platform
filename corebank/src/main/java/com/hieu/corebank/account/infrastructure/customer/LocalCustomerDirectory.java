@@ -2,7 +2,7 @@ package com.hieu.corebank.account.infrastructure.customer;
 
 import com.hieu.common.cqrs.Dispatcher;
 import com.hieu.corebank.account.application.port.CustomerDirectory;
-import com.hieu.corebank.customer.application.query.GetCustomerQuery;
+import com.hieu.corebank.customer.api.dto.request.CustomerGetRequestDTO;
 import com.hieu.corebank.shared.domain.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -23,7 +23,7 @@ public class LocalCustomerDirectory implements CustomerDirectory {
             return false;
         }
         try {
-            return dispatcher.dispatch(new GetCustomerQuery(cif)) != null;
+            return dispatcher.dispatch(new CustomerGetRequestDTO(cif)) != null;
         } catch (NotFoundException ex) {
             return false;
         }

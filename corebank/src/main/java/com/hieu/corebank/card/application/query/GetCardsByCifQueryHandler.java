@@ -3,6 +3,7 @@ package com.hieu.corebank.card.application.query;
 import com.hieu.common.cqrs.QueryHandler;
 import com.hieu.corebank.account.infrastructure.projection.AccountView;
 import com.hieu.corebank.account.infrastructure.projection.AccountViewRepository;
+import com.hieu.corebank.card.api.dto.request.CardsByCifRequestDTO;
 import com.hieu.corebank.card.api.dto.response.IssueCardResponseDTO;
 import com.hieu.corebank.card.domain.BankCard;
 import com.hieu.corebank.card.domain.CardRepository;
@@ -18,15 +19,15 @@ import java.util.stream.Collectors;
 @Profile({ProfileConstants.QUERY, ProfileConstants.ALL, ProfileConstants.TEST})
 @Component
 @RequiredArgsConstructor
-public class GetCardsByCifQueryHandler implements QueryHandler<GetCardsByCifQuery, List<IssueCardResponseDTO>> {
+public class GetCardsByCifQueryHandler implements QueryHandler<CardsByCifRequestDTO, List<IssueCardResponseDTO>> {
 
     private final CardRepository        cards;
     private final AccountViewRepository accountViews;
 
     @Override
     @Transactional(readOnly = true)
-    public List<IssueCardResponseDTO> handle(GetCardsByCifQuery query) {
-        String cif = query.cifNumber().toUpperCase();
+    public List<IssueCardResponseDTO> handle(CardsByCifRequestDTO query) {
+        String cif = query.getCifNumber().toUpperCase();
         List<AccountView> userAccounts = accountViews.findByCustomerIdOrderByLastUpdatedAtDesc(cif);
         List<String> accountIds = userAccounts.stream().map(AccountView::getAccountId).toList();
         if (accountIds.isEmpty()) {

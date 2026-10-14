@@ -3,13 +3,13 @@ package com.hieu.corebank.customer.api.impl;
 import com.hieu.common.constant.ActionType;
 import com.hieu.corebank.access.security.CoreBankAuthorization;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
-import com.hieu.corebank.account.application.query.GetAccountsByCifQuery;
+import com.hieu.corebank.account.api.dto.request.AccountsByCifRequestDTO;
+import com.hieu.corebank.card.api.dto.request.CardsByCifRequestDTO;
 import com.hieu.corebank.card.api.dto.response.IssueCardResponseDTO;
-import com.hieu.corebank.card.application.query.GetCardsByCifQuery;
 import com.hieu.corebank.customer.api.CustomerController;
 import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
+import com.hieu.corebank.customer.api.dto.request.CustomerGetRequestDTO;
 import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
-import com.hieu.corebank.customer.application.query.GetCustomerQuery;
 import com.hieu.corebank.shared.constant.ProfileConstants;
 import com.hieu.corebank.shared.infrastructure.web.BaseController;
 import org.springframework.context.annotation.Profile;
@@ -31,20 +31,20 @@ public class CustomerControllerImpl extends BaseController implements CustomerCo
     @Override
     @CoreBankAuthorization(menuCode = "customer_management", action = ActionType.READ)
     public ResponseEntity<CustomerResponseDTO> get(String cifNumber) {
-        return executeQuery(new GetCustomerQuery(cifNumber), CustomerResponseDTO.class);
+        return executeQuery(new CustomerGetRequestDTO(cifNumber), CustomerResponseDTO.class);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     @CoreBankAuthorization(menuCode = "account_management", action = ActionType.READ)
     public ResponseEntity<List<AccountResponseDTO>> accounts(String cifNumber) {
-        return executeQuery(new GetAccountsByCifQuery(cifNumber), (Class<List<AccountResponseDTO>>) (Class<?>) List.class);
+        return executeQuery(new AccountsByCifRequestDTO(cifNumber), (Class<List<AccountResponseDTO>>) (Class<?>) List.class);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     @CoreBankAuthorization(menuCode = "card_management", action = ActionType.READ)
     public ResponseEntity<List<IssueCardResponseDTO>> cards(String cifNumber) {
-        return executeQuery(new GetCardsByCifQuery(cifNumber), (Class<List<IssueCardResponseDTO>>) (Class<?>) List.class);
+        return executeQuery(new CardsByCifRequestDTO(cifNumber), (Class<List<IssueCardResponseDTO>>) (Class<?>) List.class);
     }
 }

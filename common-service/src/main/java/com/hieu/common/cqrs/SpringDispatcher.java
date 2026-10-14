@@ -42,6 +42,10 @@ public class SpringDispatcher implements Dispatcher {
     public <R, C extends Command<R>> R dispatch(C command) {
         CommandHandler<C, R> handler = commandHandlers.get(command.getClass());
         if (handler == null) {
+            initHandlers();
+            handler = commandHandlers.get(command.getClass());
+        }
+        if (handler == null) {
             for (Map.Entry<Class<?>, CommandHandler> entry : commandHandlers.entrySet()) {
                 if (entry.getKey().isAssignableFrom(command.getClass())) {
                     handler = entry.getValue();
@@ -50,7 +54,7 @@ public class SpringDispatcher implements Dispatcher {
             }
         }
         if (handler == null) {
-            throw new IllegalArgumentException("No CommandHandler found for: " + command.getClass());
+            throw new IllegalArgumentException("No CommandHandler found for: " + command.getClass() + ", available handlers: " + commandHandlers.keySet());
         }
         return handler.handle(command);
     }
