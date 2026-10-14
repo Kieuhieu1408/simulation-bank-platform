@@ -4,6 +4,7 @@ import com.hieu.common.constant.TransactionStatus;
 import com.hieu.common.cqrs.CommandHandler;
 import com.hieu.corebank.shared.constant.ProfileConstants;
 import com.hieu.corebank.shared.domain.*;
+import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
 import com.hieu.corebank.transfer.api.dto.response.TransferResponseDTO;
 import com.hieu.corebank.transfer.application.saga.TransferSaga;
 import com.hieu.corebank.transfer.domain.Transfer;
@@ -17,7 +18,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
-import org.springframework.beans.factory.DisposableBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
@@ -30,7 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.*;
 
 /**
- * InitiateTransferHandler — Use Case xử lý khởi tạo chuyển tiền (Thẩm định Cấp độ 2).
+ * TransferHandler — Use Case xử lý khởi tạo chuyển tiền (Thẩm định Cấp độ 2).
  *
  * <p>Quy trình thẩm định và xử lý:
  * <ul>
@@ -45,28 +45,27 @@ import java.util.concurrent.*;
 @Profile({ProfileConstants.COMMAND, ProfileConstants.ALL, ProfileConstants.TEST})
 @Component
 @RequiredArgsConstructor
-public class InitiateTransferHandler implements CommandHandler<InitiateTransferCommand, TransferResponseDTO>, DisposableBean {
+public class TransferHandler implements CommandHandler<TransferRequestDTO, TransferResponseDTO> {
 
     private final TransferRepository transferRepository;
     private final TransferViewRepository transferViewRepository;
     private final TransferSaga transferSaga;
     private final TransactionTemplate transactionTemplate;
-
-    private final ExecutorService sagaExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService transferSagaExecutor;
 
     @Value("${corebank.transfer.sync-timeout-seconds:3}")
     private long syncTimeoutSeconds;
 
     @Override
-    public TransferResponseDTO handle(InitiateTransferCommand command) {
-        String idempotencyKey = command.idempotencyKey();
+    public TransferResponseDTO handle(TransferRequestDTO command) {
+        String idempotencyKey = command.getIdempotencyKey();
         String transferIdStr = UUID.nameUUIDFromBytes(
-                (command.sourceAccountId() + ":" + idempotencyKey).getBytes(StandardCharsets.UTF_8)
+                (command.getSourceAccountId() + ":" + idempotencyKey).getBytes(StandardCharsets.UTF_8)
         ).toString();
         TransferId transferId = TransferId.of(transferIdStr);
         String requestHash = computeRequestHash(command);
 
-        // 1. Thẩm định Cấp độ 2: Kiểm tra Idempotency tại Corebank
+        // 1. Thẩm định Cấp độ 2: Kiểm tra Idempotency tại Corebank (Read Model)
         Optional<TransferView> existingView = transferViewRepository.findById(transferIdStr);
         if (existingView.isPresent()) {
             TransferView view = existingView.get();
@@ -81,11 +80,12 @@ public class InitiateTransferHandler implements CommandHandler<InitiateTransferC
         }
 
         // 2. Thẩm định Cấp độ 2: Kiểm tra tài khoản nguồn và đích phải khác nhau
-        if (command.sourceAccountId().equals(command.destinationAccountId())) {
+        if (command.getSourceAccountId().equals(command.getDestinationAccountId())) {
             throw new BusinessException("Source and destination accounts must be different");
         }
 
         // 3. Khởi tạo Transfer Aggregate Root (tx1)
+        // Double-check trên Write Model (transferRepository) để chống race condition khi nhiều request cùng idempotencyKey tới đồng thời
         boolean isNewTransfer;
         try {
             isNewTransfer = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
@@ -93,10 +93,10 @@ public class InitiateTransferHandler implements CommandHandler<InitiateTransferC
                 if (existing.isEmpty()) {
                     Transfer transfer = Transfer.initiate(
                             transferId,
-                            AccountId.of(command.sourceAccountId()),
-                            AccountId.of(command.destinationAccountId()),
-                            Money.of(command.amount(), Currency.of(command.currency())),
-                            command.description(),
+                            AccountId.of(command.getSourceAccountId()),
+                            AccountId.of(command.getDestinationAccountId()),
+                            Money.of(command.getAmount(), Currency.of(command.getCurrency())),
+                            command.getDescription(),
                             requestHash
                     );
                     transferRepository.save(transfer);
@@ -131,11 +131,11 @@ public class InitiateTransferHandler implements CommandHandler<InitiateTransferC
         // 4. Điều phối Saga với Bounded Latency (D1)
         CompletableFuture<TransferStatus> future = CompletableFuture.supplyAsync(
                 () -> transferSaga.execute(transferId),
-                sagaExecutor
+                transferSagaExecutor
         );
 
         try {
-            TransferStatus status = future.get(syncTimeoutSeconds, TimeUnit.SECONDS);
+            future.get(syncTimeoutSeconds, TimeUnit.SECONDS);
             TransferView view = transferViewRepository.findById(transferIdStr).orElseThrow();
             return TransferResponseDTO.from(view);
         } catch (TimeoutException ex) {
@@ -150,11 +150,11 @@ public class InitiateTransferHandler implements CommandHandler<InitiateTransferC
             return TransferResponseDTO.builder()
                     .transactionId(transferIdStr)
                     .status(TransactionStatus.PENDING)
-                    .sourceAccountId(command.sourceAccountId())
-                    .destinationAccountId(command.destinationAccountId())
-                    .amount(command.amount())
-                    .currency(command.currency().toUpperCase())
-                    .description(command.description())
+                    .sourceAccountId(command.getSourceAccountId())
+                    .destinationAccountId(command.getDestinationAccountId())
+                    .amount(command.getAmount())
+                    .currency(command.getCurrency().toUpperCase())
+                    .description(command.getDescription())
                     .createdAt(Instant.now())
                     .build();
         } catch (ExecutionException ex) {
@@ -169,31 +169,17 @@ public class InitiateTransferHandler implements CommandHandler<InitiateTransferC
         }
     }
 
-    private String computeRequestHash(InitiateTransferCommand command) {
-        String raw = command.sourceAccountId() + ":"
-                + command.destinationAccountId() + ":"
-                + command.amount().stripTrailingZeros().toPlainString() + ":"
-                + command.currency().toUpperCase();
+    private String computeRequestHash(TransferRequestDTO command) {
+        String raw = command.getSourceAccountId() + ":"
+                + command.getDestinationAccountId() + ":"
+                + command.getAmount().stripTrailingZeros().toPlainString() + ":"
+                + command.getCurrency().toUpperCase();
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] digest = md.digest(raw.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 algorithm not available", e);
-        }
-    }
-
-    @Override
-    public void destroy() {
-        log.info("Shutting down sagaExecutor in InitiateTransferHandler...");
-        sagaExecutor.shutdown();
-        try {
-            if (!sagaExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
-                sagaExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            sagaExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
     }
 }

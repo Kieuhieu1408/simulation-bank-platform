@@ -1,6 +1,5 @@
 package com.hieu.corebank.transfer;
 
-import com.hieu.common.constant.AccountStatus;
 import com.hieu.common.constant.TransactionStatus;
 import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
@@ -11,9 +10,9 @@ import com.hieu.corebank.customer.application.command.CreateCustomerCommand;
 import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
 import com.hieu.corebank.shared.domain.BusinessException;
 import com.hieu.corebank.shared.domain.ConflictException;
+import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
 import com.hieu.corebank.transfer.api.dto.response.TransferResponseDTO;
-import com.hieu.corebank.transfer.application.command.InitiateTransferCommand;
-import com.hieu.corebank.transfer.application.command.InitiateTransferHandler;
+import com.hieu.corebank.transfer.application.command.TransferHandler;
 import com.hieu.corebank.transfer.infrastructure.projection.TransferView;
 import com.hieu.corebank.transfer.infrastructure.projection.TransferViewRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -39,7 +38,7 @@ class TransferSagaIntegrationTest {
     private CreateAccountCommandHandler createAccountHandler;
 
     @Autowired
-    private InitiateTransferHandler initiateTransferHandler;
+    private TransferHandler transferHandler;
 
     @Autowired
     private AccountViewRepository accountViewRepository;
@@ -61,7 +60,7 @@ class TransferSagaIntegrationTest {
         AccountResponseDTO dst = createTestAccount(new BigDecimal("500000.00"));
 
         String idempotencyKey = "happy-path-" + UUID.randomUUID();
-        InitiateTransferCommand cmd = InitiateTransferCommand.builder()
+        TransferRequestDTO cmd = TransferRequestDTO.builder()
                 .sourceAccountId(src.getAccountId())
                 .destinationAccountId(dst.getAccountId())
                 .amount(new BigDecimal("200000.00"))
@@ -70,7 +69,7 @@ class TransferSagaIntegrationTest {
                 .description("Chuyen tien mua sach")
                 .build();
 
-        TransferResponseDTO response = initiateTransferHandler.handle(cmd);
+        TransferResponseDTO response = transferHandler.handle(cmd);
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo(TransactionStatus.SUCCESS);
@@ -99,7 +98,7 @@ class TransferSagaIntegrationTest {
         AccountResponseDTO dst = createTestAccount(new BigDecimal("500000.00"));
 
         String idempotencyKey = "replay-" + UUID.randomUUID();
-        InitiateTransferCommand cmd = InitiateTransferCommand.builder()
+        TransferRequestDTO cmd = TransferRequestDTO.builder()
                 .sourceAccountId(src.getAccountId())
                 .destinationAccountId(dst.getAccountId())
                 .amount(new BigDecimal("150000.00"))
@@ -108,11 +107,11 @@ class TransferSagaIntegrationTest {
                 .description("Replay test")
                 .build();
 
-        TransferResponseDTO res1 = initiateTransferHandler.handle(cmd);
+        TransferResponseDTO res1 = transferHandler.handle(cmd);
         assertThat(res1.getStatus()).isEqualTo(TransactionStatus.SUCCESS);
 
         long start = System.currentTimeMillis();
-        TransferResponseDTO res2 = initiateTransferHandler.handle(cmd);
+        TransferResponseDTO res2 = transferHandler.handle(cmd);
         long elapsed = System.currentTimeMillis() - start;
 
         assertThat(res2.getTransactionId()).isEqualTo(res1.getTransactionId());
@@ -131,7 +130,7 @@ class TransferSagaIntegrationTest {
         AccountResponseDTO dst = createTestAccount(new BigDecimal("500000.00"));
 
         String idempotencyKey = "conflict-" + UUID.randomUUID();
-        InitiateTransferCommand cmd1 = InitiateTransferCommand.builder()
+        TransferRequestDTO cmd1 = TransferRequestDTO.builder()
                 .sourceAccountId(src.getAccountId())
                 .destinationAccountId(dst.getAccountId())
                 .amount(new BigDecimal("100000.00"))
@@ -140,10 +139,10 @@ class TransferSagaIntegrationTest {
                 .description("Transfer 1")
                 .build();
 
-        initiateTransferHandler.handle(cmd1);
+        transferHandler.handle(cmd1);
 
         // Gửi cùng idempotencyKey nhưng đổi số tiền lên 200,000
-        InitiateTransferCommand cmd2 = InitiateTransferCommand.builder()
+        TransferRequestDTO cmd2 = TransferRequestDTO.builder()
                 .sourceAccountId(src.getAccountId())
                 .destinationAccountId(dst.getAccountId())
                 .amount(new BigDecimal("200000.00")) // Đổi số tiền
@@ -152,7 +151,7 @@ class TransferSagaIntegrationTest {
                 .description("Transfer 1 modified")
                 .build();
 
-        assertThatThrownBy(() -> initiateTransferHandler.handle(cmd2))
+        assertThatThrownBy(() -> transferHandler.handle(cmd2))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("Idempotency key conflict");
     }
@@ -164,7 +163,7 @@ class TransferSagaIntegrationTest {
         AccountResponseDTO dst = createTestAccount(new BigDecimal("500000.00"));
 
         String idempotencyKey = "insufficient-" + UUID.randomUUID();
-        InitiateTransferCommand cmd = InitiateTransferCommand.builder()
+        TransferRequestDTO cmd = TransferRequestDTO.builder()
                 .sourceAccountId(src.getAccountId())
                 .destinationAccountId(dst.getAccountId())
                 .amount(new BigDecimal("200000.00"))
@@ -173,7 +172,7 @@ class TransferSagaIntegrationTest {
                 .description("Transfer too much")
                 .build();
 
-        assertThatThrownBy(() -> initiateTransferHandler.handle(cmd))
+        assertThatThrownBy(() -> transferHandler.handle(cmd))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Insufficient available balance");
 

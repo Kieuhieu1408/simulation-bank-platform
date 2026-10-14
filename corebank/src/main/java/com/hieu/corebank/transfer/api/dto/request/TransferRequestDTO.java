@@ -1,6 +1,7 @@
 package com.hieu.corebank.transfer.api.dto.request;
 
-import com.hieu.corebank.transfer.application.command.InitiateTransferCommand;
+import com.hieu.common.cqrs.Command;
+import com.hieu.corebank.transfer.api.dto.response.TransferResponseDTO;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,7 +14,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class TransferRequestDTO {
+public class TransferRequestDTO implements Command<TransferResponseDTO> {
     @NotBlank
     private String sourceAccountId;
 
@@ -35,15 +36,4 @@ public class TransferRequestDTO {
 
     @Size(max = 255)
     private String description;
-
-    public InitiateTransferCommand toCommand() {
-        return new InitiateTransferCommand(
-                sourceAccountId,
-                destinationAccountId,
-                amount,
-                currency,
-                idempotencyKey,
-                description
-        );
-    }
 }

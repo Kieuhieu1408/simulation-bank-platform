@@ -4,11 +4,10 @@ import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
 import com.hieu.corebank.account.application.command.CreateAccountCommandHandler;
 import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
-import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
 import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
+import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
 import com.hieu.corebank.transfer.api.dto.response.TransferResponseDTO;
-import com.hieu.corebank.transfer.application.command.InitiateTransferCommand;
-import com.hieu.corebank.transfer.application.command.InitiateTransferHandler;
+import com.hieu.corebank.transfer.application.command.TransferHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +33,7 @@ class TransactionalOutboxIntegrationTest {
     private CreateAccountCommandHandler createAccountHandler;
 
     @Autowired
-    private InitiateTransferHandler initiateTransferHandler;
+    private TransferHandler transferHandler;
 
     @Autowired
     private JdbcClient jdbc;
@@ -82,7 +81,7 @@ class TransactionalOutboxIntegrationTest {
                 new AccountCreateRequestDTO(cif2, "VND", BigDecimal.ZERO).toCommand());
 
         String key = "outbox-tx-" + UUID.randomUUID();
-        TransferResponseDTO transferRes = initiateTransferHandler.handle(InitiateTransferCommand.builder()
+        TransferResponseDTO transferRes = transferHandler.handle(TransferRequestDTO.builder()
                 .sourceAccountId(src.getAccountId())
                 .destinationAccountId(dst.getAccountId())
                 .amount(new BigDecimal("250000.00"))

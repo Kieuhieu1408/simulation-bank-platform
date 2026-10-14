@@ -5,8 +5,8 @@ import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
 import com.hieu.corebank.account.application.command.CreateAccountCommandHandler;
 import com.hieu.corebank.customer.application.command.CreateCustomerCommand;
 import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
-import com.hieu.corebank.transfer.application.command.InitiateTransferCommand;
-import com.hieu.corebank.transfer.application.command.InitiateTransferHandler;
+import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
+import com.hieu.corebank.transfer.application.command.TransferHandler;
 import com.hieu.corebank.transfer.application.saga.SagaMetricsCollector;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
@@ -33,7 +33,7 @@ class SagaObservabilityIntegrationTest {
     private CreateAccountCommandHandler createAccountHandler;
 
     @Autowired
-    private InitiateTransferHandler initiateTransferHandler;
+    private TransferHandler transferHandler;
 
     @Autowired
     private SagaMetricsCollector sagaMetricsCollector;
@@ -56,7 +56,7 @@ class SagaObservabilityIntegrationTest {
 
         // Thực hiện transfer thành công
         String idempotencyKey = "metrics-tx-" + UUID.randomUUID();
-        InitiateTransferCommand cmd = InitiateTransferCommand.builder()
+        TransferRequestDTO cmd = TransferRequestDTO.builder()
                 .sourceAccountId(src.getAccountId())
                 .destinationAccountId(dst.getAccountId())
                 .amount(new BigDecimal("100000.00"))
@@ -65,7 +65,7 @@ class SagaObservabilityIntegrationTest {
                 .description("Metrics test")
                 .build();
 
-        initiateTransferHandler.handle(cmd);
+        transferHandler.handle(cmd);
 
         // 1. Kiểm tra metric corebank_saga_step_total
         Counter reserveSuccessCounter = meterRegistry.find("corebank_saga_step_total")

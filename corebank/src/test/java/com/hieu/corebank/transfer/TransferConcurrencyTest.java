@@ -8,9 +8,9 @@ import com.hieu.corebank.account.infrastructure.projection.AccountView;
 import com.hieu.corebank.account.infrastructure.projection.AccountViewRepository;
 import com.hieu.corebank.customer.application.command.CreateCustomerCommand;
 import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
+import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
 import com.hieu.corebank.transfer.api.dto.response.TransferResponseDTO;
-import com.hieu.corebank.transfer.application.command.InitiateTransferCommand;
-import com.hieu.corebank.transfer.application.command.InitiateTransferHandler;
+import com.hieu.corebank.transfer.application.command.TransferHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +35,7 @@ class TransferConcurrencyTest {
     private CreateAccountCommandHandler createAccountHandler;
 
     @Autowired
-    private InitiateTransferHandler initiateTransferHandler;
+    private TransferHandler transferHandler;
 
     @Autowired
     private AccountViewRepository accountViewRepository;
@@ -72,7 +72,7 @@ class TransferConcurrencyTest {
                 readyLatch.countDown();
                 try {
                     startLatch.await(); // Chờ tất cả 50 threads sẵn sàng để xuất phát cùng thời điểm
-                    InitiateTransferCommand cmd = InitiateTransferCommand.builder()
+                    TransferRequestDTO cmd = TransferRequestDTO.builder()
                             .sourceAccountId(src.getAccountId())
                             .destinationAccountId(dst.getAccountId())
                             .amount(transferAmount)
@@ -81,7 +81,7 @@ class TransferConcurrencyTest {
                             .description("Concurrent test")
                             .build();
 
-                    TransferResponseDTO response = initiateTransferHandler.handle(cmd);
+                    TransferResponseDTO response = transferHandler.handle(cmd);
                     if (response != null && response.getStatus() == TransactionStatus.SUCCESS) {
                         successCount.incrementAndGet();
                     } else {

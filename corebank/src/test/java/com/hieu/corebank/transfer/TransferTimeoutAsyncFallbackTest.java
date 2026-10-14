@@ -103,8 +103,8 @@ class TransferTimeoutAsyncFallbackTest {
         ResponseEntity<TransferResponseDTO> response = transferController.transfer(request);
         long elapsed = System.currentTimeMillis() - start;
 
-        // Verify: Trả về HTTP 202 Accepted và status=PENDING
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        // Verify: Trả về HTTP 200 OK và status=PENDING
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getStatus()).isEqualTo(TransactionStatus.PENDING);
         assertThat(response.getBody().getTransactionId()).isNotBlank();

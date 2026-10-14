@@ -50,7 +50,4 @@ public class SagaMetricsCollector {
         concurrencyRetriesCounter.increment();
     }
 
-    public int getStuckTransfersCount() {
-        return stuckTransfersCount.get();
-    }
 }

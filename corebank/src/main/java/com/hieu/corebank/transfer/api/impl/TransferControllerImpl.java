@@ -18,13 +18,6 @@ public class TransferControllerImpl extends BaseController implements TransferCo
     @Override
     @CoreBankAuthorization(menuCode = "transfer_management", action = ActionType.CREATE)
     public ResponseEntity<TransferResponseDTO> transfer(TransferRequestDTO request) {
-        TransferResponseDTO response = dispatcher.dispatch(request.toCommand());
-        if (response.getStatus() == com.hieu.common.constant.TransactionStatus.PENDING) {
-            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.ACCEPTED).body(response);
-        }
-        if (response.getStatus() == com.hieu.common.constant.TransactionStatus.FAILED) {
-            return org.springframework.http.ResponseEntity.status(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY).body(response);
-        }
-        return org.springframework.http.ResponseEntity.ok(response);
+        return execute(request, TransferResponseDTO.class);
     }
 }
