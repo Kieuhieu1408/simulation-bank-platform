@@ -10,8 +10,8 @@ import com.hieu.corebank.account.api.dto.response.TransactionHistoryItemDTO;
 import com.hieu.corebank.account.application.query.GetAccountBalanceQuery;
 import com.hieu.corebank.account.application.query.GetAccountByIdQuery;
 import com.hieu.corebank.account.application.query.GetTransactionHistoryQuery;
+import com.hieu.corebank.card.api.dto.request.IssueCardRequestDTO;
 import com.hieu.corebank.card.api.dto.response.IssueCardResponseDTO;
-import com.hieu.corebank.card.application.command.IssueCardCommand;
 import com.hieu.corebank.shared.constant.ProfileConstants;
 import com.hieu.corebank.shared.infrastructure.web.BaseController;
 import org.springframework.context.annotation.Profile;
@@ -30,7 +30,7 @@ public class AccountControllerImpl extends BaseController implements AccountCont
     @Override
     @CoreBankAuthorization(menuCode = "account_management", action = ActionType.CREATE)
     public ResponseEntity<AccountResponseDTO> create(AccountCreateRequestDTO request) {
-        return execute(request.toCommand(), AccountResponseDTO.class);
+        return execute(request, AccountResponseDTO.class);
     }
 
     @Override
@@ -48,7 +48,7 @@ public class AccountControllerImpl extends BaseController implements AccountCont
     @Override
     @CoreBankAuthorization(menuCode = "card_management", action = ActionType.CREATE)
     public ResponseEntity<IssueCardResponseDTO> issueCard(String id) {
-        return execute(new IssueCardCommand(id), IssueCardResponseDTO.class);
+        return execute(new IssueCardRequestDTO(id), IssueCardResponseDTO.class);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.hieu.corebank.account.api.dto.request;
 
-import com.hieu.corebank.account.application.command.CreateAccountCommand;
+import com.hieu.common.cqrs.Command;
+import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -15,7 +16,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AccountCreateRequestDTO {
+public class AccountCreateRequestDTO implements Command<AccountResponseDTO> {
     @NotBlank
     @Pattern(regexp = "[A-Za-z0-9-]{6,20}", message = "cifNumber must contain 6-20 letters, digits, or hyphens")
     private String cifNumber;
@@ -26,8 +27,4 @@ public class AccountCreateRequestDTO {
 
     @PositiveOrZero
     private BigDecimal initialBalance;
-
-    public CreateAccountCommand toCommand() {
-        return new CreateAccountCommand(cifNumber, currency, initialBalance);
-    }
 }

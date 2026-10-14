@@ -25,7 +25,7 @@ public class CustomerControllerImpl extends BaseController implements CustomerCo
     @Override
     @CoreBankAuthorization(menuCode = "customer_management", action = ActionType.CREATE)
     public ResponseEntity<CustomerResponseDTO> create(CustomerCreateRequestDTO request) {
-        return execute(request.toCommand(), CustomerResponseDTO.class);
+        return execute(request, CustomerResponseDTO.class);
     }
 
     @Override

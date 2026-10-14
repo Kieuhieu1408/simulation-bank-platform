@@ -1,6 +1,7 @@
 package com.hieu.corebank.card.application.command;
 
 import com.hieu.common.cqrs.CommandHandler;
+import com.hieu.corebank.card.api.dto.request.IssueCardRequestDTO;
 import com.hieu.corebank.card.api.dto.response.IssueCardResponseDTO;
 import com.hieu.corebank.card.application.port.AccountDirectory;
 import com.hieu.corebank.card.domain.BankCard;
@@ -16,7 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * IssueCardCommandHandler — Use Case phát hành thẻ ngân hàng (Level 2 & Level 3 Validation).
+ * CardHandler — Use Case phát hành thẻ ngân hàng (Level 2 & Level 3 Validation).
  *
  * <p>Quy trình thẩm định:
  * <ul>
@@ -29,21 +30,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile({ProfileConstants.COMMAND, ProfileConstants.ALL, ProfileConstants.TEST})
 @Component
 @RequiredArgsConstructor
-public class IssueCardCommandHandler implements CommandHandler<IssueCardCommand, IssueCardResponseDTO> {
+public class CardHandler implements CommandHandler<IssueCardRequestDTO, IssueCardResponseDTO> {
 
     private final CardRepository  cards;
     private final AccountDirectory accountDirectory;
 
     @Override
     @Transactional
-    public IssueCardResponseDTO handle(IssueCardCommand command) {
+    public IssueCardResponseDTO handle(IssueCardRequestDTO command) {
         // Cấp 2: Kiểm tra tài khoản tồn tại qua Port
-        AccountDirectory.AccountSummary account = accountDirectory.findById(command.accountId())
-                .orElseThrow(() -> new NotFoundException("Account not found: " + command.accountId()));
+        AccountDirectory.AccountSummary account = accountDirectory.findById(command.getAccountId())
+                .orElseThrow(() -> new NotFoundException("Account not found: " + command.getAccountId()));
 
         // Cấp 3: Tài khoản phải ACTIVE mới được phát hành thẻ (D5)
         if (!account.active()) {
-            throw new BusinessException("Cannot issue card for inactive account: " + command.accountId());
+            throw new BusinessException("Cannot issue card for inactive account: " + command.getAccountId());
         }
 
         String cardNumber = nextCardNumber();

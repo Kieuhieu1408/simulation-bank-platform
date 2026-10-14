@@ -42,6 +42,14 @@ public class SpringDispatcher implements Dispatcher {
     public <R, C extends Command<R>> R dispatch(C command) {
         CommandHandler<C, R> handler = commandHandlers.get(command.getClass());
         if (handler == null) {
+            for (Map.Entry<Class<?>, CommandHandler> entry : commandHandlers.entrySet()) {
+                if (entry.getKey().isAssignableFrom(command.getClass())) {
+                    handler = entry.getValue();
+                    break;
+                }
+            }
+        }
+        if (handler == null) {
             throw new IllegalArgumentException("No CommandHandler found for: " + command.getClass());
         }
         return handler.handle(command);
@@ -50,6 +58,14 @@ public class SpringDispatcher implements Dispatcher {
     @Override
     public <R, Q extends Query<R>> R dispatch(Q query) {
         QueryHandler<Q, R> handler = queryHandlers.get(query.getClass());
+        if (handler == null) {
+            for (Map.Entry<Class<?>, QueryHandler> entry : queryHandlers.entrySet()) {
+                if (entry.getKey().isAssignableFrom(query.getClass())) {
+                    handler = entry.getValue();
+                    break;
+                }
+            }
+        }
         if (handler == null) {
             throw new IllegalArgumentException("No QueryHandler found for: " + query.getClass());
         }

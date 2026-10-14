@@ -2,9 +2,9 @@ package com.hieu.corebank.transfer;
 
 import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
-import com.hieu.corebank.account.application.command.CreateAccountCommandHandler;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommand;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
+import com.hieu.corebank.account.application.command.AccountHandler;
+import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
+import com.hieu.corebank.customer.application.command.CustomerHandler;
 import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
 import com.hieu.corebank.transfer.application.command.TransferHandler;
 import com.hieu.corebank.transfer.application.saga.SagaMetricsCollector;
@@ -27,10 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SagaObservabilityIntegrationTest {
 
     @Autowired
-    private CreateCustomerCommandHandler createCustomerHandler;
+    private CustomerHandler customerHandler;
 
     @Autowired
-    private CreateAccountCommandHandler createAccountHandler;
+    private AccountHandler accountHandler;
 
     @Autowired
     private TransferHandler transferHandler;
@@ -45,14 +45,14 @@ class SagaObservabilityIntegrationTest {
     @DisplayName("NFR-CB-18 / D16: Observability Saga - Các metrics Micrometer được đăng ký và ghi nhận chính xác")
     void testSagaMetricsRegisteredAndRecorded() {
         String cif1 = ("CIF" + UUID.randomUUID().toString().substring(0, 8)).toUpperCase();
-        createCustomerHandler.handle(new CreateCustomerCommand(cif1));
-        AccountResponseDTO src = createAccountHandler.handle(
-                new AccountCreateRequestDTO(cif1, "VND", new BigDecimal("500000.00")).toCommand());
+        customerHandler.handle(new CustomerCreateRequestDTO(cif1));
+        AccountResponseDTO src = accountHandler.handle(
+                new AccountCreateRequestDTO(cif1, "VND", new BigDecimal("500000.00")));
 
         String cif2 = ("CIF" + UUID.randomUUID().toString().substring(0, 8)).toUpperCase();
-        createCustomerHandler.handle(new CreateCustomerCommand(cif2));
-        AccountResponseDTO dst = createAccountHandler.handle(
-                new AccountCreateRequestDTO(cif2, "VND", new BigDecimal("200000.00")).toCommand());
+        customerHandler.handle(new CustomerCreateRequestDTO(cif2));
+        AccountResponseDTO dst = accountHandler.handle(
+                new AccountCreateRequestDTO(cif2, "VND", new BigDecimal("200000.00")));
 
         // Thực hiện transfer thành công
         String idempotencyKey = "metrics-tx-" + UUID.randomUUID();

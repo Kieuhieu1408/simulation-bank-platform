@@ -1,8 +1,8 @@
 package com.hieu.corebank.account.infrastructure.customer;
 
+import com.hieu.common.cqrs.Dispatcher;
 import com.hieu.corebank.account.application.port.CustomerDirectory;
 import com.hieu.corebank.customer.application.query.GetCustomerQuery;
-import com.hieu.corebank.customer.application.query.GetCustomerQueryHandler;
 import com.hieu.corebank.shared.domain.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class LocalCustomerDirectory implements CustomerDirectory {
 
-    private final GetCustomerQueryHandler getCustomerQueryHandler;
+    private final Dispatcher dispatcher;
 
     @Override
     public boolean existsByCif(String cif) {
@@ -23,7 +23,7 @@ public class LocalCustomerDirectory implements CustomerDirectory {
             return false;
         }
         try {
-            return getCustomerQueryHandler.handle(new GetCustomerQuery(cif)) != null;
+            return dispatcher.dispatch(new GetCustomerQuery(cif)) != null;
         } catch (NotFoundException ex) {
             return false;
         }

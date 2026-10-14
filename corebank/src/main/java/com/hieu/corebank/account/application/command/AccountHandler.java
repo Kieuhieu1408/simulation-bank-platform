@@ -1,6 +1,7 @@
 package com.hieu.corebank.account.application.command;
 
 import com.hieu.common.cqrs.CommandHandler;
+import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
 import com.hieu.corebank.account.application.port.CustomerDirectory;
 import com.hieu.corebank.account.domain.AccountAggregate;
@@ -18,13 +19,13 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * CreateAccountCommandHandler V2 — Event Sourcing edition.
+ * AccountHandler V2 — Event Sourcing edition.
  */
 @Slf4j
 @Profile({ProfileConstants.COMMAND, ProfileConstants.ALL, ProfileConstants.TEST})
 @Component
 @RequiredArgsConstructor
-public class CreateAccountCommandHandler implements CommandHandler<CreateAccountCommand, AccountResponseDTO> {
+public class AccountHandler implements CommandHandler<AccountCreateRequestDTO, AccountResponseDTO> {
 
     private final CustomerDirectory customerDirectory;
     private final EventStore        eventStore;
@@ -32,15 +33,15 @@ public class CreateAccountCommandHandler implements CommandHandler<CreateAccount
 
     @Override
     @Transactional
-    public AccountResponseDTO handle(CreateAccountCommand command) {
-        String cif = command.cifNumber().toUpperCase();
+    public AccountResponseDTO handle(AccountCreateRequestDTO command) {
+        String cif = command.getCifNumber().toUpperCase();
         if (!customerDirectory.existsByCif(cif)) {
             throw new NotFoundException("Customer not found: " + cif);
         }
 
-        BigDecimal initialBalance = command.initialBalance() == null
+        BigDecimal initialBalance = command.getInitialBalance() == null
                 ? BigDecimal.ZERO
-                : command.initialBalance();
+                : command.getInitialBalance();
 
         String accountId     = UUID.randomUUID().toString();
         String accountNumber = nextAccountNumber();
@@ -49,7 +50,7 @@ public class CreateAccountCommandHandler implements CommandHandler<CreateAccount
         AccountAggregate account = AccountAggregate.create(
                 accountId, accountNumber,
                 cif,
-                command.currency().toUpperCase(),
+                command.getCurrency().toUpperCase(),
                 initialBalance
         );
 
@@ -63,7 +64,7 @@ public class CreateAccountCommandHandler implements CommandHandler<CreateAccount
                 .accountId(accountId)
                 .accountNumber(accountNumber)
                 .cifNumber(cif)
-                .currency(command.currency().toUpperCase())
+                .currency(command.getCurrency().toUpperCase())
                 .balance(initialBalance)
                 .status(com.hieu.common.constant.AccountStatus.ACTIVE)
                 .createdAt(java.time.Instant.now())

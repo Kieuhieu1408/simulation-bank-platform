@@ -1,17 +1,33 @@
 package com.hieu.corebank.customer.application.command;
 
-import com.hieu.common.cqrs.Command;
-import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
+import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
 
-public record CreateCustomerCommand(
-        String cifNumber,
-        String nationalId,
-        String fullName,
-        String phoneNumber,
-        String email
-) implements Command<CustomerResponseDTO> {
+public class CreateCustomerCommand extends CustomerCreateRequestDTO {
+    public CreateCustomerCommand(String cifNumber, String nationalId, String fullName, String phoneNumber, String email) {
+        super(cifNumber, nationalId, fullName, phoneNumber, email);
+    }
 
     public CreateCustomerCommand(String cifNumber) {
-        this(cifNumber, null, null, null, null);
+        super(cifNumber);
+    }
+
+    public String cifNumber() {
+        return getCifNumber();
+    }
+
+    public String nationalId() {
+        return getNationalId();
+    }
+
+    public String fullName() {
+        return getFullName();
+    }
+
+    public String phoneNumber() {
+        return getPhoneNumber();
+    }
+
+    public String email() {
+        return getEmail();
     }
 }

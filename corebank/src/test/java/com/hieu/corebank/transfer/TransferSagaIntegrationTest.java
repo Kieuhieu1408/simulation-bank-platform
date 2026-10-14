@@ -3,11 +3,11 @@ package com.hieu.corebank.transfer;
 import com.hieu.common.constant.TransactionStatus;
 import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
-import com.hieu.corebank.account.application.command.CreateAccountCommandHandler;
+import com.hieu.corebank.account.application.command.AccountHandler;
 import com.hieu.corebank.account.infrastructure.projection.AccountView;
 import com.hieu.corebank.account.infrastructure.projection.AccountViewRepository;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommand;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
+import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
+import com.hieu.corebank.customer.application.command.CustomerHandler;
 import com.hieu.corebank.shared.domain.BusinessException;
 import com.hieu.corebank.shared.domain.ConflictException;
 import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
@@ -32,10 +32,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TransferSagaIntegrationTest {
 
     @Autowired
-    private CreateCustomerCommandHandler createCustomerHandler;
+    private CustomerHandler customerHandler;
 
     @Autowired
-    private CreateAccountCommandHandler createAccountHandler;
+    private AccountHandler accountHandler;
 
     @Autowired
     private TransferHandler transferHandler;
@@ -48,9 +48,9 @@ class TransferSagaIntegrationTest {
 
     private AccountResponseDTO createTestAccount(BigDecimal initialBalance) {
         String cif = ("CIF" + UUID.randomUUID().toString().substring(0, 8)).toUpperCase();
-        createCustomerHandler.handle(new CreateCustomerCommand(cif));
+        customerHandler.handle(new CustomerCreateRequestDTO(cif));
         AccountCreateRequestDTO req = new AccountCreateRequestDTO(cif, "VND", initialBalance);
-        return createAccountHandler.handle(req.toCommand());
+        return accountHandler.handle(req);
     }
 
     @Test

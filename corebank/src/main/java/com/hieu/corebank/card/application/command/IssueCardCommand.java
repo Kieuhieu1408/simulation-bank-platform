@@ -1,7 +1,13 @@
 package com.hieu.corebank.card.application.command;
 
-import com.hieu.common.cqrs.Command;
-import com.hieu.corebank.card.api.dto.response.IssueCardResponseDTO;
+import com.hieu.corebank.card.api.dto.request.IssueCardRequestDTO;
 
-public record IssueCardCommand(String accountId) implements Command<IssueCardResponseDTO> {
+public class IssueCardCommand extends IssueCardRequestDTO {
+    public IssueCardCommand(String accountId) {
+        super(accountId);
+    }
+
+    public String accountId() {
+        return getAccountId();
+    }
 }

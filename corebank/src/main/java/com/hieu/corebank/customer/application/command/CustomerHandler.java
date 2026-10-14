@@ -1,12 +1,12 @@
 package com.hieu.corebank.customer.application.command;
 
 import com.hieu.common.cqrs.CommandHandler;
+import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
 import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
 import com.hieu.corebank.customer.domain.CifGenerator;
 import com.hieu.corebank.customer.domain.Customer;
 import com.hieu.corebank.customer.domain.CustomerRepository;
 import com.hieu.corebank.shared.constant.ProfileConstants;
-import com.hieu.corebank.shared.domain.BusinessException;
 import com.hieu.corebank.shared.domain.ConflictException;
 import com.hieu.corebank.shared.domain.NationalId;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * CreateCustomerCommandHandler — Use Case tạo khách hàng mới với 4-Level Validation Strategy (D14, AC-CB-01).
+ * CustomerHandler — Use Case xử lý tạo khách hàng mới (Thẩm định 4 Cấp độ).
  *
  * <p>Level 1 (Value Object): Thẩm định định dạng CCCD/Hộ chiếu (NationalId).
  * <p>Level 2 (Use Case): Kiểm tra tính duy nhất qua CustomerRepository.
@@ -28,40 +28,40 @@ import org.springframework.transaction.annotation.Transactional;
 @Profile({ProfileConstants.COMMAND, ProfileConstants.ALL, ProfileConstants.TEST})
 @Component
 @RequiredArgsConstructor
-public class CreateCustomerCommandHandler implements CommandHandler<CreateCustomerCommand, CustomerResponseDTO> {
+public class CustomerHandler implements CommandHandler<CustomerCreateRequestDTO, CustomerResponseDTO> {
 
     private final CustomerRepository customers;
     private final CifGenerator cifGenerator;
 
     @Override
     @Transactional
-    public CustomerResponseDTO handle(CreateCustomerCommand command) {
+    public CustomerResponseDTO handle(CustomerCreateRequestDTO command) {
         // Cấp độ 1: Thẩm định Value Object (In-Memory Validation)
-        if (command.nationalId() != null && !command.nationalId().isBlank()) {
-            NationalId.of(command.nationalId()); // Thẩm định 12 số CCCD hoặc hộ chiếu
+        if (command.getNationalId() != null && !command.getNationalId().isBlank()) {
+            NationalId.of(command.getNationalId());
         }
 
         // Tự động sinh mã CIF chuẩn 8 số nếu client không truyền (D14, AC-CB-01)
-        String cifNumber = (command.cifNumber() != null && !command.cifNumber().isBlank())
-                ? command.cifNumber().trim().toUpperCase()
+        String cifNumber = (command.getCifNumber() != null && !command.getCifNumber().isBlank())
+                ? command.getCifNumber().trim().toUpperCase()
                 : cifGenerator.nextCif();
 
         // Cấp độ 2: Thẩm định Use Case (Stateful Check qua Repository)
         if (customers.existsByCifNumber(cifNumber)) {
             throw new ConflictException("CIF already exists: " + cifNumber);
         }
-        if (command.nationalId() != null && !command.nationalId().isBlank()
-                && customers.existsByNationalId(command.nationalId().trim())) {
-            throw new ConflictException("National ID already exists: " + command.nationalId());
+        if (command.getNationalId() != null && !command.getNationalId().isBlank()
+                && customers.existsByNationalId(command.getNationalId().trim())) {
+            throw new ConflictException("National ID already exists: " + command.getNationalId());
         }
 
         // Cấp độ 3: Khởi tạo Domain Entity
         Customer customer = Customer.create(
                 cifNumber,
-                command.nationalId(),
-                command.fullName(),
-                command.phoneNumber(),
-                command.email()
+                command.getNationalId(),
+                command.getFullName(),
+                command.getPhoneNumber(),
+                command.getEmail()
         );
 
         // Cấp độ 4: Lưu trữ và chốt chặn Unique Constraint tại DB

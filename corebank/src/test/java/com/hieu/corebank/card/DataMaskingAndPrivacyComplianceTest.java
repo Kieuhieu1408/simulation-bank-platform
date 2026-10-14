@@ -2,15 +2,15 @@ package com.hieu.corebank.card;
 
 import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
-import com.hieu.corebank.account.application.command.CreateAccountCommandHandler;
+import com.hieu.corebank.account.application.command.AccountHandler;
 import com.hieu.corebank.card.api.dto.request.IssueCardRequestDTO;
 import com.hieu.corebank.card.api.dto.response.IssueCardResponseDTO;
-import com.hieu.corebank.card.application.command.IssueCardCommandHandler;
+import com.hieu.corebank.card.application.command.CardHandler;
 import com.hieu.corebank.card.application.query.GetCardByIdQuery;
 import com.hieu.corebank.card.application.query.GetCardByIdQueryHandler;
 import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
 import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
+import com.hieu.corebank.customer.application.command.CustomerHandler;
 import com.hieu.corebank.customer.application.query.GetCustomerQuery;
 import com.hieu.corebank.customer.application.query.GetCustomerQueryHandler;
 import org.junit.jupiter.api.DisplayName;
@@ -20,7 +20,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,16 +28,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DataMaskingAndPrivacyComplianceTest {
 
     @Autowired
-    private CreateCustomerCommandHandler createCustomerHandler;
+    private CustomerHandler customerHandler;
 
     @Autowired
     private GetCustomerQueryHandler getCustomerQueryHandler;
 
     @Autowired
-    private CreateAccountCommandHandler createAccountHandler;
+    private AccountHandler accountHandler;
 
     @Autowired
-    private IssueCardCommandHandler issueCardHandler;
+    private CardHandler cardHandler;
 
     @Autowired
     private GetCardByIdQueryHandler getCardByIdHandler;
@@ -55,7 +54,7 @@ class DataMaskingAndPrivacyComplianceTest {
                 .email("masking@bank.com")
                 .build();
 
-        CustomerResponseDTO custRes = createCustomerHandler.handle(custReq.toCommand());
+        CustomerResponseDTO custRes = customerHandler.handle(custReq);
         assertThat(custRes.getNationalId()).isEqualTo("012345****01");
 
         // Truy vấn lại qua GetCustomerQuery cũng phải masked
@@ -63,15 +62,15 @@ class DataMaskingAndPrivacyComplianceTest {
         assertThat(queriedCust.getNationalId()).isEqualTo("012345****01");
 
         // 2. Tạo Account
-        AccountResponseDTO account = createAccountHandler.handle(
-                new AccountCreateRequestDTO(custRes.getCifNumber(), "VND", new BigDecimal("5000000.00")).toCommand());
+        AccountResponseDTO account = accountHandler.handle(
+                new AccountCreateRequestDTO(custRes.getCifNumber(), "VND", new BigDecimal("5000000.00")));
 
         // 3. Phát hành Thẻ và kiểm tra masking số thẻ
         IssueCardRequestDTO cardReq = IssueCardRequestDTO.builder()
                 .accountId(account.getAccountId())
                 .build();
 
-        IssueCardResponseDTO cardRes = issueCardHandler.handle(cardReq.toCommand());
+        IssueCardResponseDTO cardRes = cardHandler.handle(cardReq);
         assertThat(cardRes).isNotNull();
         assertThat(cardRes.getCardId()).isNotNull();
 

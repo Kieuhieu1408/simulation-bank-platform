@@ -19,7 +19,7 @@ public class CardControllerImpl extends BaseController implements CardController
     @Override
     @CoreBankAuthorization(menuCode = "card_management", action = ActionType.CREATE)
     public ResponseEntity<IssueCardResponseDTO> issue(IssueCardRequestDTO request) {
-        return execute(request.toCommand(), IssueCardResponseDTO.class);
+        return execute(request, IssueCardResponseDTO.class);
     }
 
     @Override

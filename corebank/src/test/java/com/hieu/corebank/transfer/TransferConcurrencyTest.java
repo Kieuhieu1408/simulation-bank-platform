@@ -3,11 +3,11 @@ package com.hieu.corebank.transfer;
 import com.hieu.common.constant.TransactionStatus;
 import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
-import com.hieu.corebank.account.application.command.CreateAccountCommandHandler;
+import com.hieu.corebank.account.application.command.AccountHandler;
 import com.hieu.corebank.account.infrastructure.projection.AccountView;
 import com.hieu.corebank.account.infrastructure.projection.AccountViewRepository;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommand;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
+import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
+import com.hieu.corebank.customer.application.command.CustomerHandler;
 import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
 import com.hieu.corebank.transfer.api.dto.response.TransferResponseDTO;
 import com.hieu.corebank.transfer.application.command.TransferHandler;
@@ -29,10 +29,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TransferConcurrencyTest {
 
     @Autowired
-    private CreateCustomerCommandHandler createCustomerHandler;
+    private CustomerHandler customerHandler;
 
     @Autowired
-    private CreateAccountCommandHandler createAccountHandler;
+    private AccountHandler accountHandler;
 
     @Autowired
     private TransferHandler transferHandler;
@@ -49,14 +49,14 @@ class TransferConcurrencyTest {
 
         // Tạo tài khoản nguồn và đích
         String cif1 = ("CIF" + UUID.randomUUID().toString().substring(0, 8)).toUpperCase();
-        createCustomerHandler.handle(new CreateCustomerCommand(cif1));
-        AccountResponseDTO src = createAccountHandler.handle(
-                new AccountCreateRequestDTO(cif1, "VND", initialBalance).toCommand());
+        customerHandler.handle(new CustomerCreateRequestDTO(cif1));
+        AccountResponseDTO src = accountHandler.handle(
+                new AccountCreateRequestDTO(cif1, "VND", initialBalance));
 
         String cif2 = ("CIF" + UUID.randomUUID().toString().substring(0, 8)).toUpperCase();
-        createCustomerHandler.handle(new CreateCustomerCommand(cif2));
-        AccountResponseDTO dst = createAccountHandler.handle(
-                new AccountCreateRequestDTO(cif2, "VND", BigDecimal.ZERO).toCommand());
+        customerHandler.handle(new CustomerCreateRequestDTO(cif2));
+        AccountResponseDTO dst = accountHandler.handle(
+                new AccountCreateRequestDTO(cif2, "VND", BigDecimal.ZERO));
 
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch readyLatch = new CountDownLatch(threadCount);

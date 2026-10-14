@@ -1,7 +1,7 @@
 package com.hieu.corebank.customer.api.dto.request;
 
-import com.hieu.corebank.customer.application.command.CreateCustomerCommand;
-import jakarta.validation.constraints.NotBlank;
+import com.hieu.common.cqrs.Command;
+import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
 import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class CustomerCreateRequestDTO {
+public class CustomerCreateRequestDTO implements Command<CustomerResponseDTO> {
     @Pattern(regexp = "[A-Za-z0-9-]{6,20}", message = "cifNumber must contain 6-20 letters, digits, or hyphens")
     private String cifNumber;
 
@@ -29,9 +29,5 @@ public class CustomerCreateRequestDTO {
 
     public CustomerCreateRequestDTO(String cifNumber) {
         this.cifNumber = cifNumber;
-    }
-
-    public CreateCustomerCommand toCommand() {
-        return new CreateCustomerCommand(cifNumber, nationalId, fullName, phoneNumber, email);
     }
 }

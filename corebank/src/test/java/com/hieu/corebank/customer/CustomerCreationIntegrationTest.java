@@ -2,7 +2,7 @@ package com.hieu.corebank.customer;
 
 import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
 import com.hieu.corebank.customer.api.dto.response.CustomerResponseDTO;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
+import com.hieu.corebank.customer.application.command.CustomerHandler;
 import com.hieu.corebank.shared.domain.ConflictException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CustomerCreationIntegrationTest {
 
     @Autowired
-    private CreateCustomerCommandHandler createCustomerHandler;
+    private CustomerHandler customerHandler;
 
     @Test
     @DisplayName("AC-CB-01: Tạo khách hàng mới tự động sinh mã CIF chuẩn 8 số duy nhất (00000001 - 99999999)")
@@ -33,7 +33,7 @@ class CustomerCreationIntegrationTest {
                 .email("test.cif@bank.com")
                 .build();
 
-        CustomerResponseDTO response = createCustomerHandler.handle(req.toCommand());
+        CustomerResponseDTO response = customerHandler.handle(req);
 
         assertThat(response).isNotNull();
         assertThat(response.getCifNumber()).isNotNull();
@@ -54,7 +54,7 @@ class CustomerCreationIntegrationTest {
                 .email("kh1@bank.com")
                 .build();
 
-        CustomerResponseDTO res1 = createCustomerHandler.handle(req1.toCommand());
+        CustomerResponseDTO res1 = customerHandler.handle(req1);
         assertThat(res1.getCifNumber()).isNotNull();
 
         // Request thứ 2 dùng cùng số CCCD
@@ -65,7 +65,7 @@ class CustomerCreationIntegrationTest {
                 .email("kh2@bank.com")
                 .build();
 
-        assertThatThrownBy(() -> createCustomerHandler.handle(req2.toCommand()))
+        assertThatThrownBy(() -> customerHandler.handle(req2))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("National ID already exists");
     }
@@ -81,7 +81,7 @@ class CustomerCreationIntegrationTest {
                 .email("passport@bank.com")
                 .build();
 
-        CustomerResponseDTO res = createCustomerHandler.handle(req.toCommand());
+        CustomerResponseDTO res = customerHandler.handle(req);
         assertThat(res.getCifNumber()).matches("^[0-9]{8}$");
         assertThat(res.getNationalId()).isEqualTo(passport.substring(0, 2) + "****" + passport.substring(passport.length() - 2));
     }

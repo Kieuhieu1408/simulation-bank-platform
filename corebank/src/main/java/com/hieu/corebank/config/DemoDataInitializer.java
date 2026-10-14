@@ -9,8 +9,8 @@ import com.hieu.corebank.access.infrastructure.persistence.rbac.RoleEntity;
 import com.hieu.corebank.access.infrastructure.persistence.rbac.RoleJpaRepository;
 import com.hieu.corebank.access.infrastructure.persistence.user.UserEntity;
 import com.hieu.corebank.access.infrastructure.persistence.user.UserJpaRepository;
-import com.hieu.corebank.account.application.command.CreateAccountCommand;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommand;
+import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
+import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
 import com.hieu.corebank.customer.domain.CustomerRepository;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -89,12 +89,12 @@ public class DemoDataInitializer {
 
             // Seed Business data (Không dùng V1)
             if (customerRepository.count() == 0) {
-                dispatcher.dispatch(new CreateCustomerCommand("CIF00000001", "001099000001", "Nguyen Van A", "0901234567", "vana@demo.com"));
-                dispatcher.dispatch(new CreateCustomerCommand("CIF00000002", "001099000002", "Tran Thi B", "0901234568", "thib@demo.com"));
+                dispatcher.dispatch(new CustomerCreateRequestDTO("CIF00000001", "001099000001", "Nguyen Van A", "0901234567", "vana@demo.com"));
+                dispatcher.dispatch(new CustomerCreateRequestDTO("CIF00000002", "001099000002", "Tran Thi B", "0901234568", "thib@demo.com"));
 
-                dispatcher.dispatch(new CreateAccountCommand("CIF00000001", "VND", new BigDecimal("10000000.00")));
-                dispatcher.dispatch(new CreateAccountCommand("CIF00000001", "VND", new BigDecimal("5000000.00")));
-                dispatcher.dispatch(new CreateAccountCommand("CIF00000002", "VND", new BigDecimal("5000000.00")));
+                dispatcher.dispatch(new AccountCreateRequestDTO("CIF00000001", "VND", new BigDecimal("10000000.00")));
+                dispatcher.dispatch(new AccountCreateRequestDTO("CIF00000001", "VND", new BigDecimal("5000000.00")));
+                dispatcher.dispatch(new AccountCreateRequestDTO("CIF00000002", "VND", new BigDecimal("5000000.00")));
             }
         };
     }

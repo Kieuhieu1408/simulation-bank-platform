@@ -53,7 +53,7 @@ public class TransferHandler implements CommandHandler<TransferRequestDTO, Trans
     private final TransactionTemplate transactionTemplate;
     private final ExecutorService transferSagaExecutor;
 
-    @Value("${corebank.transfer.sync-timeout-seconds:3}")
+    @Value("${corebank.transfer.sync-timeout-seconds}")
     private long syncTimeoutSeconds;
 
     @Override

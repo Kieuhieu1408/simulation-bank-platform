@@ -2,9 +2,9 @@ package com.hieu.corebank.shared;
 
 import com.hieu.corebank.account.api.dto.request.AccountCreateRequestDTO;
 import com.hieu.corebank.account.api.dto.response.AccountResponseDTO;
-import com.hieu.corebank.account.application.command.CreateAccountCommandHandler;
+import com.hieu.corebank.account.application.command.AccountHandler;
 import com.hieu.corebank.customer.api.dto.request.CustomerCreateRequestDTO;
-import com.hieu.corebank.customer.application.command.CreateCustomerCommandHandler;
+import com.hieu.corebank.customer.application.command.CustomerHandler;
 import com.hieu.corebank.transfer.api.dto.request.TransferRequestDTO;
 import com.hieu.corebank.transfer.api.dto.response.TransferResponseDTO;
 import com.hieu.corebank.transfer.application.command.TransferHandler;
@@ -27,10 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TransactionalOutboxIntegrationTest {
 
     @Autowired
-    private CreateCustomerCommandHandler createCustomerHandler;
+    private CustomerHandler customerHandler;
 
     @Autowired
-    private CreateAccountCommandHandler createAccountHandler;
+    private AccountHandler accountHandler;
 
     @Autowired
     private TransferHandler transferHandler;
@@ -42,13 +42,13 @@ class TransactionalOutboxIntegrationTest {
     @DisplayName("Phase 6: Tạo tài khoản ghi nhận Integration Event AccountOpened vào bảng outbox_event với schemaVersion 1.0")
     void testAccountOpenedOutboxEvent() {
         String cif = ("CIF" + UUID.randomUUID().toString().substring(0, 8)).toUpperCase();
-        createCustomerHandler.handle(CustomerCreateRequestDTO.builder()
+        customerHandler.handle(CustomerCreateRequestDTO.builder()
                 .cifNumber(cif)
                 .nationalId("012345" + String.format("%06d", Math.abs(UUID.randomUUID().hashCode() % 1_000_000L)))
-                .build().toCommand());
+                .build());
 
-        AccountResponseDTO account = createAccountHandler.handle(
-                new AccountCreateRequestDTO(cif, "VND", new BigDecimal("5000000.00")).toCommand());
+        AccountResponseDTO account = accountHandler.handle(
+                new AccountCreateRequestDTO(cif, "VND", new BigDecimal("5000000.00")));
 
         List<Map<String, Object>> outboxRecords = jdbc.sql(
                 "SELECT event_type, schema_version, payload FROM outbox_event WHERE aggregate_id = :accId"
@@ -71,14 +71,14 @@ class TransactionalOutboxIntegrationTest {
     void testTransferCompletedOutboxEvent() {
         // Tạo 2 tài khoản
         String cif1 = ("CIF" + UUID.randomUUID().toString().substring(0, 8)).toUpperCase();
-        createCustomerHandler.handle(CustomerCreateRequestDTO.builder().cifNumber(cif1).build().toCommand());
-        AccountResponseDTO src = createAccountHandler.handle(
-                new AccountCreateRequestDTO(cif1, "VND", new BigDecimal("1000000.00")).toCommand());
+        customerHandler.handle(CustomerCreateRequestDTO.builder().cifNumber(cif1).build());
+        AccountResponseDTO src = accountHandler.handle(
+                new AccountCreateRequestDTO(cif1, "VND", new BigDecimal("1000000.00")));
 
         String cif2 = ("CIF" + UUID.randomUUID().toString().substring(0, 8)).toUpperCase();
-        createCustomerHandler.handle(CustomerCreateRequestDTO.builder().cifNumber(cif2).build().toCommand());
-        AccountResponseDTO dst = createAccountHandler.handle(
-                new AccountCreateRequestDTO(cif2, "VND", BigDecimal.ZERO).toCommand());
+        customerHandler.handle(CustomerCreateRequestDTO.builder().cifNumber(cif2).build());
+        AccountResponseDTO dst = accountHandler.handle(
+                new AccountCreateRequestDTO(cif2, "VND", BigDecimal.ZERO));
 
         String key = "outbox-tx-" + UUID.randomUUID();
         TransferResponseDTO transferRes = transferHandler.handle(TransferRequestDTO.builder()
