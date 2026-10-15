@@ -1,7 +1,6 @@
 package com.hieu.common.exception;
 
 import com.hieu.common.constant.CommonErrorCode;
-import com.hieu.common.observability.CorrelationIdFilter;
 import com.hieu.common.observability.LogFields;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -36,7 +35,6 @@ class GlobalExceptionHandlerTest {
     @Test
     @DisplayName("Should handle CommonException and return standard ApiErrorResponse")
     void testHandleCommonException() {
-        // Dùng CommonErrorCode.BUSINESS_RULE_VIOLATION thay cho ErrorCode.TRANSFER_REJECTED
         CommonException ex = new CommonException(
                 CommonErrorCode.BUSINESS_RULE_VIOLATION, "Tài khoản nguồn không đủ số dư");
 
@@ -48,18 +46,19 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().message()).isEqualTo(CommonErrorCode.BUSINESS_RULE_VIOLATION.safeMessage());
         assertThat(response.getBody().correlationId()).isEqualTo("test-correlation-12345");
 
-        // MDC error fields must be cleaned up
+        // MDC error fields must be cleaned up after handler exits
         assertThat(MDC.get(LogFields.ERROR_CODE)).isNull();
     }
 
     @Test
-    @DisplayName("Should handle InvalidRequestException with field violations")
-    void testHandleInvalidRequestWithViolations() {
+    @DisplayName("Should handle CommonException with field violations and include them in response")
+    void testHandleCommonExceptionWithFieldViolations() {
         List<ApiErrorResponse.FieldViolation> violations = List.of(
                 new ApiErrorResponse.FieldViolation("amount", "must be positive"),
                 new ApiErrorResponse.FieldViolation("cifNumber", "must not be blank")
         );
-        InvalidRequestException ex = new InvalidRequestException("Validation failed", violations);
+        CommonException ex = new CommonException(
+                CommonErrorCode.REQUEST_INVALID, "Validation failed", violations);
 
         ResponseEntity<ApiErrorResponse> response = handler.handleCommonException(ex);
 
@@ -114,7 +113,7 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("Should handle unexpected Exception and return 500 Internal Server Error without leaking internal message")
+    @DisplayName("Should handle unexpected Exception and return 500 without leaking internal message")
     void testHandleUnexpectedException() {
         Exception ex = new RuntimeException("Sensitive database credentials or SQL query failure");
 
@@ -125,5 +124,15 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().code()).isEqualTo(CommonErrorCode.INTERNAL_ERROR.code());
         assertThat(response.getBody().message()).doesNotContain("Sensitive database");
         assertThat(response.getBody().message()).isEqualTo(CommonErrorCode.INTERNAL_ERROR.safeMessage());
+    }
+
+    @Test
+    @DisplayName("Should clean up MDC error fields after handling any exception")
+    void testMdcCleanupAfterHandling() {
+        CommonException ex = new CommonException(CommonErrorCode.INTERNAL_ERROR, "crash", new RuntimeException());
+        handler.handleCommonException(ex);
+
+        assertThat(MDC.get(LogFields.ERROR_CODE)).isNull();
+        assertThat(MDC.get(LogFields.ERROR_CATEGORY)).isNull();
     }
 }

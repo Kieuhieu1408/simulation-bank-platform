@@ -4,7 +4,8 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-import com.hieu.common.exception.AuthenticationRequiredException;
+import com.hieu.common.constant.CommonErrorCode;
+import com.hieu.common.exception.CommonException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -29,29 +30,30 @@ public class IdentityContextResolver {
     }
 
     /**
-     * @throws AuthenticationRequiredException nếu request không có định danh
+     * @throws CommonException (UNAUTHENTICATED) nếu request không có định danh
      *         người dùng đã xác minh
      */
     public IdentityContext requireCurrent() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) {
-            throw new AuthenticationRequiredException("Không có authentication trong SecurityContext");
+            throw new CommonException(CommonErrorCode.UNAUTHENTICATED,
+                    "Không có authentication trong SecurityContext");
         }
         if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication)) {
             // Ví dụ token client credentials hoặc authentication type khác: không
             // đại diện người dùng cuối nên không được dùng cho use case khách hàng.
-            throw new AuthenticationRequiredException(
+            throw new CommonException(CommonErrorCode.UNAUTHENTICATED,
                     "Authentication không phải JWT người dùng: " + authentication.getClass().getSimpleName());
         }
 
         Jwt jwt = jwtAuthentication.getToken();
         String subject = jwt.getSubject();
         if (!StringUtils.hasText(subject)) {
-            throw new AuthenticationRequiredException("Token thiếu claim sub");
+            throw new CommonException(CommonErrorCode.UNAUTHENTICATED, "Token thiếu claim sub");
         }
         String customerId = jwt.getClaimAsString(properties.getCustomerClaim());
         if (!StringUtils.hasText(customerId)) {
-            throw new AuthenticationRequiredException(
+            throw new CommonException(CommonErrorCode.UNAUTHENTICATED,
                     "Token thiếu claim khách hàng: " + properties.getCustomerClaim());
         }
 

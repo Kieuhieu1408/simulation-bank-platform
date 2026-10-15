@@ -44,7 +44,6 @@ public class GlobalExceptionHandler {
             enrichMdc(errorCode.code(), errorCode.category().name());
 
             if (errorCode.category() == ErrorCategory.TECHNICAL_RETRYABLE || exception.getCause() != null) {
-                // Lỗi kỹ thuật / sập dependency: BẮT BUỘC log ERROR kèm stack trace để điều tra
                 log.error("eventName={} {}={} {}={} reason={}",
                         LogFields.EVENT_REQUEST_REJECTED,
                         LogFields.ERROR_CODE, errorCode.code(),
@@ -52,7 +51,6 @@ public class GlobalExceptionHandler {
                         exception.getMessage(),
                         exception);
             } else {
-                // Lỗi nghiệp vụ hợp lệ (Business rejection/validation): log WARN, không kèm stack trace
                 log.warn("eventName={} {}={} {}={} reason={}",
                         LogFields.EVENT_REQUEST_REJECTED,
                         LogFields.ERROR_CODE, errorCode.code(),
@@ -60,13 +58,13 @@ public class GlobalExceptionHandler {
                         exception.getMessage());
             }
 
-            if (exception instanceof InvalidRequestException invalidReq && !invalidReq.details().isEmpty()) {
+            if (!exception.fieldViolations().isEmpty()) {
                 return ResponseEntity.status(errorCode.httpStatus())
                         .body(new ApiErrorResponse(
                                 errorCode.code(),
                                 exception.safeMessage(),
                                 CorrelationIdFilter.current(),
-                                invalidReq.details()));
+                                exception.fieldViolations()));
             }
 
             return respond(errorCode, exception.safeMessage());
@@ -75,7 +73,7 @@ public class GlobalExceptionHandler {
         }
     }
 
-    /** Lỗi bean validation ở lớp transport. */
+    /** Lỗi bean validation ở lớp transport (@RequestBody). */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
         try {
@@ -106,11 +104,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleAuthorizationDenied(RuntimeException exception) {
         try {
             enrichMdc(CommonErrorCode.FORBIDDEN.code(), ErrorCategory.AUTHORIZATION.name());
-
             log.warn("eventName={} {}={}",
                     LogFields.EVENT_AUTHORIZATION_DENIED,
                     LogFields.ERROR_CODE, CommonErrorCode.FORBIDDEN.code());
-
             return respond(CommonErrorCode.FORBIDDEN, CommonErrorCode.FORBIDDEN.safeMessage());
         } finally {
             clearMdcErrorFields();
@@ -122,11 +118,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleAuthentication(AuthenticationException exception) {
         try {
             enrichMdc(CommonErrorCode.UNAUTHENTICATED.code(), ErrorCategory.AUTHENTICATION.name());
-
             log.warn("eventName={} {}={}",
                     LogFields.EVENT_AUTHENTICATION_FAILED,
                     LogFields.ERROR_CODE, CommonErrorCode.UNAUTHENTICATED.code());
-
             return respond(CommonErrorCode.UNAUTHENTICATED, CommonErrorCode.UNAUTHENTICATED.safeMessage());
         } finally {
             clearMdcErrorFields();
@@ -138,12 +132,10 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception) {
         try {
             enrichMdc(CommonErrorCode.INTERNAL_ERROR.code(), ErrorCategory.TECHNICAL_RETRYABLE.name());
-
             log.error("eventName={} {}={}",
                     LogFields.EVENT_UNHANDLED_ERROR,
                     LogFields.ERROR_CODE, CommonErrorCode.INTERNAL_ERROR.code(),
                     exception);
-
             return respond(CommonErrorCode.INTERNAL_ERROR, CommonErrorCode.INTERNAL_ERROR.safeMessage());
         } finally {
             clearMdcErrorFields();

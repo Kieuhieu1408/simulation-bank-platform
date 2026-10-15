@@ -1,10 +1,11 @@
 package com.hieu.common.cqrs.behavior;
 
 import com.hieu.common.annotation.ValidCommand;
+import com.hieu.common.constant.CommonErrorCode;
 import com.hieu.common.cqrs.PipelineBehavior;
 import com.hieu.common.cqrs.RequestHandlerDelegate;
 import com.hieu.common.exception.ApiErrorResponse;
-import com.hieu.common.exception.InvalidRequestException;
+import com.hieu.common.exception.CommonException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import org.slf4j.Logger;
@@ -45,7 +46,8 @@ public class ValidationBehavior implements PipelineBehavior<Object, Object> {
                 log.warn("eventName=CQRS_VALIDATION_FAILED request={} violationCount={}",
                         request.getClass().getSimpleName(), details.size());
 
-                throw new InvalidRequestException(
+                throw new CommonException(
+                        CommonErrorCode.REQUEST_INVALID,
                         "Dữ liệu command không hợp lệ cho " + request.getClass().getSimpleName(),
                         details);
             }

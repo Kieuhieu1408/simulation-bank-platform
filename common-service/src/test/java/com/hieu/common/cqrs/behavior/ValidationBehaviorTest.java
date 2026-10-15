@@ -3,7 +3,7 @@ package com.hieu.common.cqrs.behavior;
 import com.hieu.common.annotation.ValidCommand;
 import com.hieu.common.cqrs.Command;
 import com.hieu.common.cqrs.RequestHandlerDelegate;
-import com.hieu.common.exception.InvalidRequestException;
+import com.hieu.common.exception.CommonException;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.NotBlank;
@@ -62,16 +62,16 @@ class ValidationBehaviorTest {
     }
 
     @Test
-    @DisplayName("Should throw InvalidRequestException when @ValidCommand has violations")
+    @DisplayName("Should throw CommonException with field violations when @ValidCommand has violations")
     void testThrowsWhenInvalid() {
         ValidatedCommand cmd = new ValidatedCommand("", new BigDecimal("-10.00"));
         RequestHandlerDelegate<Object> next = () -> "OK";
 
         assertThatThrownBy(() -> behavior.handle(cmd, next))
-                .isInstanceOf(InvalidRequestException.class)
+                .isInstanceOf(CommonException.class)
                 .satisfies(ex -> {
-                    InvalidRequestException ire = (InvalidRequestException) ex;
-                    assertThat(ire.details()).hasSize(2);
+                    CommonException ce = (CommonException) ex;
+                    assertThat(ce.fieldViolations()).hasSize(2);
                 });
     }
 
