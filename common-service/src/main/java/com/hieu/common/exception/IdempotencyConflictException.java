@@ -1,5 +1,7 @@
 package com.hieu.common.exception;
 
+import com.hieu.common.constant.CommonErrorCode;
+
 /**
  * Cùng idempotency key nhưng canonical request hash khác.
  *
@@ -13,7 +15,7 @@ public class IdempotencyConflictException extends CommonException {
     private final String operation;
 
     public IdempotencyConflictException(String operation) {
-        super(ErrorCode.IDEMPOTENCY_CONFLICT,
+        super(CommonErrorCode.IDEMPOTENCY_CONFLICT,
                 "Idempotency key đã tồn tại với request hash khác cho operation " + operation);
         this.operation = operation;
     }

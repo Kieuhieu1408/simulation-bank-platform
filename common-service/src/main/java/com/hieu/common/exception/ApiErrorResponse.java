@@ -1,5 +1,8 @@
 package com.hieu.common.exception;
 
+import com.hieu.common.constant.CommonErrorCode;
+import com.hieu.common.constant.ErrorCode;
+
 import java.util.List;
 
 /**
@@ -33,8 +36,8 @@ public record ApiErrorResponse(
 
     public static ApiErrorResponse validation(String correlationId, List<FieldViolation> details) {
         return new ApiErrorResponse(
-                ErrorCode.REQUEST_INVALID.code(),
-                ErrorCode.REQUEST_INVALID.safeMessage(),
+                CommonErrorCode.REQUEST_INVALID.code(),
+                CommonErrorCode.REQUEST_INVALID.safeMessage(),
                 correlationId,
                 details);
     }

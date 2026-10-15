@@ -1,7 +1,10 @@
 package com.hieu.common.exception;
 
+import com.hieu.common.constant.ErrorCategory;
+import com.hieu.common.constant.ErrorCode;
+
 /**
- * Exception gốc của Money Bank, luôn mang theo một {@link ErrorCode} đã được
+ * Exception gốc của hệ thống, luôn mang theo một {@link ErrorCode} đã được
  * ánh xạ sẵn sang HTTP status và {@link ErrorCategory}.
  *
  * <p>Mục đích: mọi lỗi đi ra ngoài đều có mã trong error catalog, không có
@@ -11,12 +14,12 @@ public class CommonException extends RuntimeException {
 
     private final ErrorCode errorCode;
 
-    protected CommonException(ErrorCode errorCode, String internalMessage) {
+    public CommonException(ErrorCode errorCode, String internalMessage) {
         super(internalMessage);
         this.errorCode = errorCode;
     }
 
-    protected CommonException(ErrorCode errorCode, String internalMessage, Throwable cause) {
+    public CommonException(ErrorCode errorCode, String internalMessage, Throwable cause) {
         super(internalMessage, cause);
         this.errorCode = errorCode;
     }

@@ -1,5 +1,7 @@
 package com.hieu.common.exception;
 
+import com.hieu.common.constant.CommonErrorCode;
+
 /**
  * Không có định danh đã xác minh cho thao tác đang yêu cầu.
  *
@@ -10,6 +12,6 @@ package com.hieu.common.exception;
 public class AuthenticationRequiredException extends CommonException {
 
     public AuthenticationRequiredException(String internalReason) {
-        super(ErrorCode.UNAUTHENTICATED, internalReason);
+        super(CommonErrorCode.UNAUTHENTICATED, internalReason);
     }
 }

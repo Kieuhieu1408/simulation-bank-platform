@@ -1,11 +1,13 @@
 package com.hieu.common.exception;
 
-import java.util.List;
-
+import com.hieu.common.constant.CommonErrorCode;
+import com.hieu.common.constant.ErrorCategory;
+import com.hieu.common.constant.ErrorCode;
 import com.hieu.common.observability.CorrelationIdFilter;
 import com.hieu.common.observability.LogFields;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
@@ -13,6 +15,8 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.util.List;
 
 /**
  * Điểm duy nhất biến exception thành HTTP response (SRD mục 13.2, 13.3).
@@ -23,6 +27,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  *   <li>Stack trace và chi tiết kỹ thuật chỉ nằm ở log nội bộ.</li>
  *   <li>Lỗi không lường trước luôn là {@code 500} với mã chung, không rò
  *       exception class hay message gốc.</li>
+ *   <li>Đưa {@code errorCode} và {@code errorCategory} vào MDC để hệ thống log tập trung
+ *       (ELK/Loki) có thể tạo dashboard và alert chính xác.</li>
  * </ul>
  */
 @RestControllerAdvice
@@ -30,74 +36,128 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    /** Mọi lỗi đã được phân loại của Money Bank. */
+    /** Mọi lỗi đã được phân loại của hệ thống. */
     @ExceptionHandler(CommonException.class)
     public ResponseEntity<ApiErrorResponse> handleCommonException(CommonException exception) {
         ErrorCode errorCode = exception.errorCode();
-        // Lỗi nghiệp vụ là kết quả hợp lệ của hệ thống nên log ở mức WARN, không
-        // kèm stack trace để không tạo nhiễu cho alert.
-        log.warn("eventName={} {}={} {}={} reason={}",
-                LogFields.EVENT_REQUEST_REJECTED,
-                LogFields.ERROR_CODE, errorCode.code(),
-                LogFields.ERROR_CATEGORY, errorCode.category(),
-                exception.getMessage());
-        return respond(errorCode, exception.safeMessage());
+        try {
+            enrichMdc(errorCode.code(), errorCode.category().name());
+
+            if (errorCode.category() == ErrorCategory.TECHNICAL_RETRYABLE || exception.getCause() != null) {
+                // Lỗi kỹ thuật / sập dependency: BẮT BUỘC log ERROR kèm stack trace để điều tra
+                log.error("eventName={} {}={} {}={} reason={}",
+                        LogFields.EVENT_REQUEST_REJECTED,
+                        LogFields.ERROR_CODE, errorCode.code(),
+                        LogFields.ERROR_CATEGORY, errorCode.category(),
+                        exception.getMessage(),
+                        exception);
+            } else {
+                // Lỗi nghiệp vụ hợp lệ (Business rejection/validation): log WARN, không kèm stack trace
+                log.warn("eventName={} {}={} {}={} reason={}",
+                        LogFields.EVENT_REQUEST_REJECTED,
+                        LogFields.ERROR_CODE, errorCode.code(),
+                        LogFields.ERROR_CATEGORY, errorCode.category(),
+                        exception.getMessage());
+            }
+
+            if (exception instanceof InvalidRequestException invalidReq && !invalidReq.details().isEmpty()) {
+                return ResponseEntity.status(errorCode.httpStatus())
+                        .body(new ApiErrorResponse(
+                                errorCode.code(),
+                                exception.safeMessage(),
+                                CorrelationIdFilter.current(),
+                                invalidReq.details()));
+            }
+
+            return respond(errorCode, exception.safeMessage());
+        } finally {
+            clearMdcErrorFields();
+        }
     }
 
     /** Lỗi bean validation ở lớp transport. */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
-        // Chỉ trả tên field và thông báo của constraint. Không phản chiếu giá trị
-        // client gửi lên vì giá trị đó có thể là dữ liệu nhạy cảm.
-        List<ApiErrorResponse.FieldViolation> details = exception.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .map(fieldError -> new ApiErrorResponse.FieldViolation(
-                        fieldError.getField(),
-                        fieldError.getDefaultMessage()))
-                .toList();
-        log.warn("eventName={} {}={} fieldCount={}",
-                LogFields.EVENT_REQUEST_VALIDATION_FAILED,
-                LogFields.ERROR_CODE, ErrorCode.REQUEST_INVALID.code(),
-                details.size());
-        return ResponseEntity.status(ErrorCode.REQUEST_INVALID.httpStatus())
-                .body(ApiErrorResponse.validation(CorrelationIdFilter.current(), details));
+        try {
+            enrichMdc(CommonErrorCode.REQUEST_INVALID.code(), ErrorCategory.VALIDATION.name());
+
+            List<ApiErrorResponse.FieldViolation> details = exception.getBindingResult()
+                    .getFieldErrors()
+                    .stream()
+                    .map(fieldError -> new ApiErrorResponse.FieldViolation(
+                            fieldError.getField(),
+                            fieldError.getDefaultMessage()))
+                    .toList();
+
+            log.warn("eventName={} {}={} fieldCount={}",
+                    LogFields.EVENT_REQUEST_VALIDATION_FAILED,
+                    LogFields.ERROR_CODE, CommonErrorCode.REQUEST_INVALID.code(),
+                    details.size());
+
+            return ResponseEntity.status(CommonErrorCode.REQUEST_INVALID.httpStatus())
+                    .body(ApiErrorResponse.validation(CorrelationIdFilter.current(), details));
+        } finally {
+            clearMdcErrorFields();
+        }
     }
 
-    /**
-     * Authorization bị từ chối, gồm cả method authorization.
-     *
-     * <p>Audit của quyết định deny được ghi tại lớp authorization; ở đây chỉ log
-     * theo category, không ghi principal hay token ({@code SEC-004}).
-     */
+    /** Authorization bị từ chối, gồm cả method authorization. */
     @ExceptionHandler({AuthorizationDeniedException.class, AccessDeniedException.class})
     public ResponseEntity<ApiErrorResponse> handleAuthorizationDenied(RuntimeException exception) {
-        log.warn("eventName={} {}={}",
-                LogFields.EVENT_AUTHORIZATION_DENIED,
-                LogFields.ERROR_CODE, ErrorCode.FORBIDDEN.code());
-        return respond(ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.safeMessage());
+        try {
+            enrichMdc(CommonErrorCode.FORBIDDEN.code(), ErrorCategory.AUTHORIZATION.name());
+
+            log.warn("eventName={} {}={}",
+                    LogFields.EVENT_AUTHORIZATION_DENIED,
+                    LogFields.ERROR_CODE, CommonErrorCode.FORBIDDEN.code());
+
+            return respond(CommonErrorCode.FORBIDDEN, CommonErrorCode.FORBIDDEN.safeMessage());
+        } finally {
+            clearMdcErrorFields();
+        }
     }
 
     /** Thiếu/sai credential. Không tiết lộ lý do cụ thể để tránh dò token. */
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiErrorResponse> handleAuthentication(AuthenticationException exception) {
-        log.warn("eventName={} {}={}",
-                LogFields.EVENT_AUTHENTICATION_FAILED,
-                LogFields.ERROR_CODE, ErrorCode.UNAUTHENTICATED.code());
-        return respond(ErrorCode.UNAUTHENTICATED, ErrorCode.UNAUTHENTICATED.safeMessage());
+        try {
+            enrichMdc(CommonErrorCode.UNAUTHENTICATED.code(), ErrorCategory.AUTHENTICATION.name());
+
+            log.warn("eventName={} {}={}",
+                    LogFields.EVENT_AUTHENTICATION_FAILED,
+                    LogFields.ERROR_CODE, CommonErrorCode.UNAUTHENTICATED.code());
+
+            return respond(CommonErrorCode.UNAUTHENTICATED, CommonErrorCode.UNAUTHENTICATED.safeMessage());
+        } finally {
+            clearMdcErrorFields();
+        }
     }
 
-    /**
-     * Lưới an toàn cuối. Bất kỳ exception chưa được phân loại đều thành
-     * {@code 500} với mã chung; stack trace chỉ ở log nội bộ.
-     */
+    /** Lưới an toàn cuối. Bất kỳ exception chưa được phân loại đều thành 500 với mã chung. */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception) {
-        log.error("eventName={} {}={}",
-                LogFields.EVENT_UNHANDLED_ERROR,
-                LogFields.ERROR_CODE, ErrorCode.INTERNAL_ERROR.code(),
-                exception);
-        return respond(ErrorCode.INTERNAL_ERROR, ErrorCode.INTERNAL_ERROR.safeMessage());
+        try {
+            enrichMdc(CommonErrorCode.INTERNAL_ERROR.code(), ErrorCategory.TECHNICAL_RETRYABLE.name());
+
+            log.error("eventName={} {}={}",
+                    LogFields.EVENT_UNHANDLED_ERROR,
+                    LogFields.ERROR_CODE, CommonErrorCode.INTERNAL_ERROR.code(),
+                    exception);
+
+            return respond(CommonErrorCode.INTERNAL_ERROR, CommonErrorCode.INTERNAL_ERROR.safeMessage());
+        } finally {
+            clearMdcErrorFields();
+        }
+    }
+
+    private void enrichMdc(String errorCode, String errorCategory) {
+        MDC.put(LogFields.ERROR_CODE, errorCode);
+        MDC.put(LogFields.ERROR_CATEGORY, errorCategory);
+    }
+
+    private void clearMdcErrorFields() {
+        MDC.remove(LogFields.ERROR_CODE);
+        MDC.remove(LogFields.ERROR_CATEGORY);
     }
 
     private ResponseEntity<ApiErrorResponse> respond(ErrorCode errorCode, String message) {

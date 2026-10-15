@@ -1,5 +1,8 @@
 package com.hieu.common.exception;
 
+import com.hieu.common.constant.CommonErrorCode;
+import com.hieu.common.constant.ErrorCategory;
+
 /**
  * Một dependency bắt buộc không khả dụng và có bằng chứng là chưa gây side
  * effect (ví dụ Keycloak token exchange lỗi, connect refused trước khi gửi lệnh).
@@ -13,7 +16,7 @@ public class DependencyUnavailableException extends CommonException {
     private final String dependency;
 
     public DependencyUnavailableException(String dependency, Throwable cause) {
-        super(ErrorCode.DEPENDENCY_UNAVAILABLE, "Dependency không khả dụng: " + dependency, cause);
+        super(CommonErrorCode.DEPENDENCY_UNAVAILABLE, "Dependency không khả dụng: " + dependency, cause);
         this.dependency = dependency;
     }
 

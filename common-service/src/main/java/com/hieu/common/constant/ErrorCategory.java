@@ -1,4 +1,4 @@
-package com.hieu.common.exception;
+package com.hieu.common.constant;
 
 /**
  * Phân loại lỗi theo SRD mục 13.3.
