@@ -43,6 +43,8 @@ import java.util.Map;
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    private static final String ROLE_PREFIX = "ROLE_";
+
     @Bean
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,
                                                       JwtDecoder jwtDecoder,
@@ -120,10 +122,12 @@ public class SecurityConfig {
             Collection<GrantedAuthority> authorities = new ArrayList<>(authoritiesConverter.convert(jwt));
 
             // Trích xuất roles từ realm_access.roles (Keycloak default)
-            Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
             if (realmAccess != null && realmAccess.get("roles") instanceof Collection<?> roles) {
                 for (Object role : roles) {
-                    authorities.add(new SimpleGrantedAuthority(String.valueOf(role)));
+                    String roleName = String.valueOf(role);
+                    String authority = roleName.startsWith(ROLE_PREFIX) ? roleName : ROLE_PREFIX + roleName;
+                    authorities.add(new SimpleGrantedAuthority(authority));
                 }
             }
 
@@ -131,7 +135,9 @@ public class SecurityConfig {
             Object rolesClaim = jwt.getClaim("roles");
             if (rolesClaim instanceof Collection<?> roles) {
                 for (Object role : roles) {
-                    authorities.add(new SimpleGrantedAuthority(String.valueOf(role)));
+                    String roleName = String.valueOf(role);
+                    String authority = roleName.startsWith(ROLE_PREFIX) ? roleName : ROLE_PREFIX + roleName;
+                    authorities.add(new SimpleGrantedAuthority(authority));
                 }
             }
 

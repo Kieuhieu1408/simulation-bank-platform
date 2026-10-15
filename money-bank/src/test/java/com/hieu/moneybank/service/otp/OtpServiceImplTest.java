@@ -43,15 +43,22 @@ class OtpServiceImplTest {
     }
 
     @Test
-    @DisplayName("Xác thực thành công khi không truyền OTP (mặc định dùng test OTP)")
-    void shouldValidateSuccessfullyWhenOtpNotProvided() {
+    @DisplayName("Ném BusinessException khi không truyền OTP hoặc OTP rỗng")
+    void shouldThrowExceptionWhenOtpNullOrBlank() {
         String proposalId = "prop-test-3";
         otpService.generateOtp(proposalId);
 
-        assertThatCode(() -> otpService.validateOtp(proposalId, null))
-                .doesNotThrowAnyException();
-        assertThatCode(() -> otpService.validateOtp(proposalId, ""))
-                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> otpService.validateOtp(proposalId, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Mã OTP không được để trống");
+
+        assertThatThrownBy(() -> otpService.validateOtp(proposalId, ""))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Mã OTP không được để trống");
+
+        assertThatThrownBy(() -> otpService.validateOtp(proposalId, "   "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Mã OTP không được để trống");
     }
 
     @Test

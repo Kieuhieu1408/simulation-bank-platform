@@ -34,6 +34,10 @@ public class OtpServiceImpl implements OtpService {
 
     @Override
     public void validateOtp(String proposalId, String inputOtp) {
+        if (inputOtp == null || inputOtp.isBlank()) {
+            throw new BusinessException("Mã OTP không được để trống");
+        }
+
         String defaultOtp = otpProperties.getDefaultTestOtp();
         OtpEntry entry = otpStore.get(proposalId);
 
@@ -44,10 +48,8 @@ public class OtpServiceImpl implements OtpService {
             throw new BusinessException("Mã OTP đã hết hạn");
         }
 
+        String actualOtp = inputOtp.trim();
         String expectedOtp = (entry != null) ? entry.otp() : defaultOtp;
-
-        // Nếu client không truyền OTP (null hoặc rỗng), mặc định test dùng defaultOtp (111111)
-        String actualOtp = (inputOtp == null || inputOtp.isBlank()) ? defaultOtp : inputOtp.trim();
 
         if (!expectedOtp.equals(actualOtp) && !defaultOtp.equals(actualOtp)) {
             log.warn("eventName=OTP_VALIDATION_FAILED proposalId={}", proposalId);
