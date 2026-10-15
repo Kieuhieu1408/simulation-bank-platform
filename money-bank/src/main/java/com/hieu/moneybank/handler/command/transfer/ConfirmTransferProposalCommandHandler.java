@@ -1,6 +1,9 @@
 package com.hieu.moneybank.handler.command.transfer;
 
+import com.hieu.common.constant.CommonErrorCode;
+import com.hieu.common.constant.ErrorCategory;
 import com.hieu.common.cqrs.CommandHandler;
+import com.hieu.common.exception.CommonException;
 import com.hieu.moneybank.client.CorebankClient;
 import com.hieu.moneybank.domain.TransferProposal;
 import com.hieu.moneybank.dto.request.ConfirmTransferProposalCommand;
@@ -26,18 +29,18 @@ public class ConfirmTransferProposalCommandHandler
 
     @Override
     public TransferProposalResponseDTO handle(ConfirmTransferProposalCommand command) {
-        
-        // 0. Xác thực OTP (mặc định test: 111111)
+
+        // 0. Xác thực OTP
         otpService.validateOtp(command.getProposalId(), command.getOtp());
 
         // 1. Transaction 1: Lock và chuyển sang VALIDATING
         TransferProposal proposal = proposalService.startValidating(
             command.getProposalId(), command.getConfirmerCustomerId());
 
-        // 2. Gọi Corebank (Ngoài transaction)
-        String corebankTxId   = null;
-        String failureReason  = null;
-        boolean corebankOk    = false;
+        // 2. Gọi Corebank (ngoài transaction)
+        String corebankTxId  = null;
+        String failureReason = null;
+        boolean corebankOk   = false;
 
         try {
             TransferRequestDTO req = buildCorebankRequest(proposal);
@@ -48,23 +51,32 @@ public class ConfirmTransferProposalCommandHandler
                 proposal.getId(), corebankTxId);
 
         } catch (BusinessException e) {
-            // 4xx: lỗi nghiệp vụ cuối → FAILED
+            // 4xx: Corebank từ chối dứt điểm → FAILED
             failureReason = "COREBANK_REJECTED: " + sanitize(e.getMessage());
             log.warn("eventName=COREBANK_TRANSFER_REJECTED proposalId={} reason={}",
                 proposal.getId(), failureReason);
 
+        } catch (CommonException e) {
+            // OPERATION_OUTCOME_UNKNOWN (5xx / timeout): kết quả chưa xác định.
+            // TRF-INV-008: KHÔNG được finalize thành FAILED. Proposal giữ VALIDATING.
+            // Trả 202 ACCEPTED để client tự tra cứu trạng thái.
+            log.error("eventName=COREBANK_TRANSFER_UNCERTAIN proposalId={} errorCode={}",
+                proposal.getId(), e.errorCode().code(), e);
+            throw e;  // GlobalExceptionHandler sẽ trả HTTP 202
+
         } catch (Exception e) {
-            // 5xx / timeout: không rõ trạng thái tại Corebank
-            // Bắn exception ngay, KHÔNG finalize. Proposal giữ nguyên trạng thái VALIDATING.
-            log.error("eventName=COREBANK_TRANSFER_UNCERTAIN proposalId={} errorClass={}",
+            // Lỗi kỹ thuật không lường trước (network interrupted, serialization lỗi…)
+            // Cũng giữ VALIDATING — không biết kết quả tại Corebank.
+            log.error("eventName=COREBANK_TRANSFER_UNCERTAIN_UNEXPECTED proposalId={} errorClass={}",
                 proposal.getId(), e.getClass().getSimpleName(), e);
-            throw new RuntimeException("Kết quả chuyển tiền chưa xác định, vui lòng kiểm tra lại sau.", e);
+            throw new CommonException(CommonErrorCode.OPERATION_OUTCOME_UNKNOWN,
+                    "Kết quả chuyển tiền chưa xác định do lỗi kỹ thuật", e);
         }
 
         // 3. Transaction 2: Cập nhật state CONFIRMED/FAILED và ghi Outbox
         TransferProposal finalized = proposalService.finalizeTransfer(
             proposal.getId(), corebankTxId, failureReason, corebankOk);
-            
+
         return TransferProposalResponseDTO.from(finalized);
     }
 

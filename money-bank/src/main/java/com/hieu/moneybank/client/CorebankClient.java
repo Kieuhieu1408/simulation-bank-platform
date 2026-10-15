@@ -1,5 +1,7 @@
 package com.hieu.moneybank.client;
 
+import com.hieu.common.constant.CommonErrorCode;
+import com.hieu.common.exception.CommonException;
 import com.hieu.moneybank.config.CorebankProperties;
 import com.hieu.moneybank.dto.request.AccountCreateRequestDTO;
 import com.hieu.moneybank.dto.request.CustomerCreateRequestDTO;
@@ -48,15 +50,18 @@ public class CorebankClient {
         log.info("Calling Corebank to execute transfer: source={}, destination={}, amount={}, key={}",
                 request.getSourceAccountId(), request.getDestinationAccountId(), request.getAmount(), request.getIdempotencyKey());
 
-        return applyErrorHandling(
+        return applyTransferErrorHandling(
                 corebankWebClient.post()
                         .uri("/api/v1/transfers")
                         .bodyValue(request)
                         .retrieve()
         )
         .bodyToMono(TransferResponseDTO.class)
-        .timeout(properties.getTotalTimeout())
-        .doOnError(e -> log.error("Failed to call Corebank for executeTransfer", e))
+        .timeout(properties.getTotalTimeout(),
+                // Timeout = kết quả chưa xác định, KHÔNG coi là FAILED (TRF-INV-008)
+                Mono.error(new CommonException(CommonErrorCode.OPERATION_OUTCOME_UNKNOWN,
+                        "Timeout khi chờ Corebank xác nhận chuyển tiền")))
+        .doOnError(e -> log.error("eventName=COREBANK_TRANSFER_ERROR errorClass={}", e.getClass().getSimpleName(), e))
         .block();
     }
 
@@ -260,6 +265,10 @@ public class CorebankClient {
     // Helper: Error Handling
     // ──────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Error handling cho các lệnh READ (query). 5xx → {@link CommonException}
+     * với mã {@code DEPENDENCY_UNAVAILABLE} (503) — client có thể retry.
+     */
     private ResponseSpec applyErrorHandling(ResponseSpec responseSpec) {
         return responseSpec
                 .onStatus(status -> status.value() == HttpStatus.NOT_FOUND.value(), response ->
@@ -276,9 +285,50 @@ public class CorebankClient {
                 )
                 .onStatus(HttpStatusCode::is5xxServerError, response ->
                         response.bodyToMono(String.class)
+                                .flatMap(body -> {
+                                    log.error("eventName=COREBANK_SERVER_ERROR status={}", response.statusCode());
+                                    return Mono.error(new CommonException(
+                                            CommonErrorCode.DEPENDENCY_UNAVAILABLE,
+                                            "Corebank lỗi nội bộ [" + response.statusCode() + "]: " + body
+                                    ));
+                                })
+                );
+    }
+
+    /**
+     * Error handling đặc biệt cho lệnh WRITE chuyển tiền (TRF-INV-008).
+     *
+     * <p>5xx / timeout → {@link CommonException} với mã {@code OPERATION_OUTCOME_UNKNOWN}
+     * (202 ACCEPTED) vì kết quả tại Corebank chưa xác định. Caller <b>không được</b>
+     * đánh dấu giao dịch là FAILED — phải giữ nguyên trạng thái VALIDATING.
+     *
+     * <p>4xx → {@link BusinessException} (422) — Corebank từ chối dứt điểm,
+     * caller có thể đánh dấu FAILED.
+     */
+    ResponseSpec applyTransferErrorHandling(ResponseSpec responseSpec) {
+        return responseSpec
+                .onStatus(status -> status.value() == HttpStatus.NOT_FOUND.value(), response ->
+                        response.bodyToMono(String.class)
                                 .flatMap(body -> Mono.error(
-                                        new BusinessException("Corebank lỗi nội bộ [" + response.statusCode() + "]: " + body)
+                                        new BusinessException("Tài khoản không tồn tại tại Corebank: " + body)
                                 ))
+                )
+                .onStatus(HttpStatusCode::is4xxClientError, response ->
+                        response.bodyToMono(String.class)
+                                .flatMap(body -> Mono.error(
+                                        new BusinessException("Corebank từ chối giao dịch [" + response.statusCode() + "]: " + body)
+                                ))
+                )
+                .onStatus(HttpStatusCode::is5xxServerError, response ->
+                        response.bodyToMono(String.class)
+                                .flatMap(body -> {
+                                    // TRF-INV-008: 5xx = kết quả chưa xác định, KHÔNG coi là FAILED
+                                    log.error("eventName=COREBANK_TRANSFER_AMBIGUOUS status={}", response.statusCode());
+                                    return Mono.error(new CommonException(
+                                            CommonErrorCode.OPERATION_OUTCOME_UNKNOWN,
+                                            "Kết quả chuyển tiền tại Corebank chưa xác định [" + response.statusCode() + "]"
+                                    ));
+                                })
                 );
     }
 }
