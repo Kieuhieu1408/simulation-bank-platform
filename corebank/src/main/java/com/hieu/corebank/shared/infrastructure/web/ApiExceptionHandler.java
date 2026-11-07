@@ -5,6 +5,7 @@ import com.hieu.common.observability.CorrelationIdFilter;
 import com.hieu.corebank.shared.domain.BusinessException;
 import com.hieu.corebank.shared.domain.ConflictException;
 import com.hieu.corebank.shared.domain.DomainException;
+import com.hieu.corebank.shared.domain.InProgressConflictException;
 import com.hieu.corebank.shared.domain.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,7 @@ public class ApiExceptionHandler {
     // --- Mã lỗi số của corebank (định nghĩa nội bộ, không share ra ngoài) ---
     private static final String CODE_NOT_FOUND         = "404001";
     private static final String CODE_CONFLICT          = "409001";
+    private static final String CODE_IN_PROGRESS       = "409002";
     private static final String CODE_BUSINESS          = "422001";
     private static final String CODE_BAD_REQUEST       = "400001";
     private static final String CODE_INTERNAL          = "500001";
@@ -47,6 +49,14 @@ public class ApiExceptionHandler {
         log.warn("eventName=DOMAIN_NOT_FOUND errorCode={} reason={}", CODE_NOT_FOUND, ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ApiErrorResponse(CODE_NOT_FOUND, ex.getMessage(),
+                        CorrelationIdFilter.current(), List.of()));
+    }
+
+    @ExceptionHandler(InProgressConflictException.class)
+    public ResponseEntity<ApiErrorResponse> inProgressConflict(InProgressConflictException ex) {
+        log.warn("eventName=DOMAIN_IN_PROGRESS_CONFLICT errorCode={} reason={}", CODE_IN_PROGRESS, ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ApiErrorResponse(CODE_IN_PROGRESS, ex.getMessage(),
                         CorrelationIdFilter.current(), List.of()));
     }
 

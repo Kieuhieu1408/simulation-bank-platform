@@ -13,7 +13,7 @@ Corebank là phân hệ sổ cái ngân hàng trung tâm (Core Ledger Service) c
 - **Quản lý Tài khoản Thanh toán (Account):** Mở tài khoản đa tiền tệ, theo dõi Số dư sổ cái (`ledgerBalance`), Số dư khả dụng (`availableBalance`) và các khoản giữ tiền (`holds`).
 - **Quản lý Thẻ (Card):** Phát hành thẻ thanh toán liên kết tài khoản, che mờ số thẻ (Masking) chuẩn PCI/Nghị định 13/2023/NĐ-CP, tuyệt đối **không lưu trữ và không trả về mã CVV**.
 - **Chuyển tiền Nội bộ (Transfer Saga):** Điều phối chuyển tiền qua Saga Orchestration 2 pha (Reserve → Credit [Pivot] → Settle), tự động bù trừ nếu lỗi trước pivot, tự phục hồi sau sự cố qua `SagaRecoveryJob`.
-- **Tự bảo vệ Sổ cái (Zero-Trust Idempotency):** Sinh `transferId = UUID v3(sourceAccountId + ":" + idempotencyKey)` tất định; phát hiện gửi lại trùng hash thì replay kết quả trong $\le 50\text{ms}$; nếu đổi nội dung thì phản hồi lỗi HTTP `409 Conflict`.
+- **Tự bảo vệ Sổ cái Đa Pod (Zero-Trust Idempotency & Redis In-Flight Lock):** Sinh `transferId = UUID v3(sourceAccountId + ":" + idempotencyKey)` tất định; chặn xử lý trùng đồng thời giữa nhiều K8s Pods bằng khóa nguyên tử Lua trên Redis (`HTTP 409` — mã `409002`, chủ động xóa khóa ngay khi Saga xong); phát hiện gửi lại sau khi hoàn tất thì replay kết quả trong $\le 50\text{ms}$; nếu đổi nội dung payload thì phản hồi `HTTP 409 Conflict` (`409001`).
 - **Tra cứu Số dư & Lịch sử Giao dịch:** Tra cứu số dư tức thời và danh sách giao dịch qua Read Projections (`account_view`, `transfer_view`, `transaction_history_view`).
 
 ## Đặc tả API
@@ -165,10 +165,11 @@ Tiếp nhận lệnh chuyển tiền nội bộ được điều phối bằng S
   ```
 - **Trường hợp quá hạn chờ đồng bộ (Async Fallback):**
   Nếu Saga chưa kịp hoàn tất trong giới hạn thời gian chờ đồng bộ (cấu hình `corebank.transfer.sync-timeout-seconds: 3`), API phản hồi kết quả tức thì với `status: "PENDING"`. Giao dịch tiếp tục hoàn tất ngầm trong nền và đồng bộ trạng thái cuối cùng sang Kafka topic `bank.transfers.events`.
-- **Trường hợp lỗi nghiệp vụ:**
-  - Không đủ số dư: Ném ngoại lệ nghiệp vụ trả về lỗi HTTP `422 Unprocessable Entity` (hoặc `400 Bad Request`).
-  - Gửi lại cùng `idempotencyKey` nhưng sai khác số tiền / tài khoản nhận: Trả về lỗi HTTP `409 Conflict`.
-  - Gửi lại cùng `idempotencyKey` và khớp payload: Trả ngay kết quả cũ trong $\le 50\text{ms}$ (Idempotent Replay).
+- **Trường hợp lỗi nghiệp vụ & Idempotency:**
+  - Không đủ số dư: Ném ngoại lệ nghiệp vụ trả về lỗi HTTP `422 Unprocessable Entity` (`code: "422001"`).
+  - Gửi lại cùng `idempotencyKey` nhưng sai khác số tiền / tài khoản nhận: Trả về lỗi HTTP `409 Conflict` (`code: "409001"`).
+  - Nhiều Pod nhận đồng thời cùng `idempotencyKey` (khớp payload) khi giao dịch đang xử lý (`IN_FLIGHT` trên Redis): Trả về lỗi HTTP `409 Conflict` (`code: "409002"` — khóa Redis tự động xóa ngay khi luồng Saga thực sự kết thúc, TTL an toàn `30s`).
+  - Gửi lại cùng `idempotencyKey` và khớp payload sau khi giao dịch đã hoàn tất: Trả ngay kết quả cũ trong $\le 50\text{ms}$ (Idempotent Replay).
 
 #### `GET /api/v1/transfers/{id}`
 Tra cứu trạng thái lệnh chuyển tiền theo `transferId`.
@@ -186,8 +187,79 @@ Lấy danh sách các lệnh chuyển tiền liên quan đến tài khoản.
 
 ## Kiến trúc Kỹ thuật & Hạ tầng
 
+Corebank áp dụng mô hình **Modular Monolith** kết hợp giữa **Clean Architecture (Onion / Hexagonal Architecture)** và **Domain-Driven Design (DDD)**, sẵn sàng chuyển đổi thành Microservices độc lập:
+
+```mermaid
+flowchart TB
+    subgraph PresentationLayer["1. TẦNG API / PRESENTATION (Inbound Adapters)"]
+        direction TB
+        Controllers["REST Controllers (@RestController)<br/>CustomerController, AccountController, TransferController, CardController"]
+        DTOs["Request / Response DTOs (Data Masking & Validation)"]
+    end
+
+    subgraph ApplicationLayer["2. TẦNG APPLICATION (Use Cases & Workflows)"]
+        direction TB
+        CmdHandlers["Command Handlers (AccountHandler, TransferHandler, ...)"]
+        QueryHandlers["Query Handlers (GetAccountBalance, GetCards, ...)"]
+        SagaOrch["Saga Orchestrator & Self-Healing (TransferSaga, SagaRecoveryJob)"]
+        Ports["Application Ports (AccountGateway, CustomerDirectory, AccountDirectory)"]
+    end
+
+    subgraph DomainLayer["3. TẦNG DOMAIN (Core Business - 100% Pure POJO)"]
+        direction TB
+        Aggregates["Aggregate Roots: AccountAggregate, Transfer"]
+        Entities["Entities: Hold, Customer, BankCard"]
+        ValueObjects["Value Objects: Money, Currency, NationalId, CardNumber, AccountId"]
+        DomainEvents["Domain Events: AccountCreatedEvent, FundsReservedEvent, ..."]
+        DomainPorts["Domain Ports: AccountRepository, TransferRepository, CifGenerator"]
+    end
+
+    subgraph InfrastructureLayer["4. TẦNG INFRASTRUCTURE (Outbound Adapters & Frameworks)"]
+        direction TB
+        Persistence["EventStore, SnapshotStore, EventSourcedAccountRepository, JPA Repos"]
+        Projections["CQRS Projections: AccountProjector, account_view, transfer_view"]
+        InterBcAdapters["Inter-BC Adapters: InProcessAccountGateway, LocalCustomerDirectory"]
+        Outbox["Transactional Outbox (outbox_event) & Kafka Publisher"]
+    end
+
+    PresentationLayer -->|Gọi Use Cases| ApplicationLayer
+    ApplicationLayer -->|Thao tác Nghiệp vụ| DomainLayer
+    InfrastructureLayer -.->|Hiện thực Application Ports (DIP)| ApplicationLayer
+    InfrastructureLayer -.->|Hiện thực Domain Repository Ports (DIP)| DomainLayer
+    InfrastructureLayer -->|Đọc & Lưu trữ| DomainLayer
+```
+
+### Các Tầng Clean Architecture & DDD
+
+| Tầng | Package | Vai trò & Trách nhiệm | Ràng buộc Kiến trúc (ArchUnit) |
+|---|---|---|---|
+| **Domain** | `com.hieu.corebank.<bc>.domain`<br/>`com.hieu.corebank.shared.domain` | Hạt nhân nghiệp vụ, Aggregate Roots, Entities, Value Objects, Domain Events, Invariants. | **Thuần khiết 100% POJO**. Tuyệt đối không phụ thuộc Spring, JPA, Jackson (`rule1`, `rule1a-c`). |
+| **Application** | `com.hieu.corebank.<bc>.application` | Thực thi Use Cases, điều phối quy trình Saga, kiểm tra Cấp 2 (Stateful/Idempotency), định nghĩa Ports. | **Độc lập Hạ tầng**. Cấm import `infrastructure` hay `api` Controllers (`rule2`). |
+| **Infrastructure** | `com.hieu.corebank.<bc>.infrastructure` | Hiện thực Outbound Ports (DIP), Event Store, Snapshot Store, JPA Repositories, Projectors (CQRS), Outbox. | Repositories/Adapters chỉ nằm trong `infrastructure`/`persistence` (`rule5`). |
+| **API / Presentation** | `com.hieu.corebank.<bc>.api` | REST Controllers, Request/Response DTOs, Serialization (Jackson 3), Exception Handler, Che mờ dữ liệu. | Toàn bộ `@RestController` chỉ nằm trong `..api..` (`rule4`). |
+| **Shared Kernel** | `com.hieu.corebank.shared` | Kiểu dữ liệu cơ bản (`Money`, `Currency`, `NationalId`), base classes, EventStore, Outbox. | **Phụ thuộc 1 chiều**. Cấm import ngược vào bất kỳ Bounded Context nào (`rule6`). |
+
+### 12 Nguyên tắc Kiến trúc Cốt lõi Áp dụng tại Dự án
+Chi tiết xem tại tài liệu **[HLD Section 3 — Kiến trúc Phân tầng CA & DDD](docs/hld.md#3-kiến-trúc-phân-tầng-clean-architecture--domain-driven-design-ca--ddd)**:
+1. **Domain thuần khiết 100% (Pure Domain Principle):** Domain hoàn toàn là POJO, zero framework coupling (No Spring, No JPA, No Jackson).
+2. **Đảo ngược Phụ thuộc & Quy tắc Hướng tâm (Dependency Inversion & Clean Architecture Rule):** Dependencies luôn hướng vào trong tâm Domain. Application không phụ thuộc Infra hay Controller.
+3. **Một Transaction chỉ cập nhật một Aggregate Root (Single Aggregate per Transaction):** Ranh giới nhất quán giao dịch độc lập; chuyển tiền liên-aggregate bắt buộc qua Saga.
+4. **Điều phối Saga với Điểm Bản lề & Tự phục hồi (Saga Orchestration with Pivot Transaction & Forward Recovery):** Trước pivot có thể bù trừ (`release`), sau pivot (ghi có đích thành công) chỉ đi tiến (`settle` retry), cấm bù trừ ngược để chống tiền ảo (**Phantom Money**). Tự phục hồi qua `SagaRecoveryJob` (`SKIP LOCKED`).
+5. **Cô lập Ranh giới Bounded Context (Bounded Context Isolation):** Không import chéo Domain/Infra giữa các context. Giao tiếp liên-context qua Application Port nội bộ hoặc Integration Event.
+6. **Shared Kernel Độc lập một chiều (Unidirectional Shared Kernel Isolation):** Shared Kernel không phụ thuộc ngược vào bất kỳ Bounded Context cụ thể nào.
+7. **Thẩm định Đa tầng Chiều sâu (4-Level Defense-in-Depth Validation Strategy):** Value Object (In-memory format) $\rightarrow$ Use Case (Stateful/Idempotency) $\rightarrow$ Aggregate Invariant (Business rules) $\rightarrow$ Database Constraint (Concurrency safety net).
+8. **Sổ cái Kép Bất biến & Event Sourcing (Double-Entry General Ledger & Append-Only Event Store):** Biến động số dư là chuỗi sự kiện bất biến, không bao giờ `UPDATE` hay `DELETE` sự kiện. $\sum \text{Debit} = \sum \text{Credit}$.
+9. **CQRS Phân tách Vật lý trên Hạ tầng K8s (Physical Infrastructure CQRS):** Pod `command` (Write Master DB) và Pod `query` (Read Replica DB, HPA autoscaling) quản lý qua `ProfileConstants`.
+10. **Tự bảo vệ Sổ cái Đa Pod (Zero-Trust Idempotency: Redis In-Flight Lock + Deterministic UUID v3):** Sinh `transferId = UUID v3(sourceAccountId + ":" + idempotencyKey)` tất định; khóa nguyên tử Lua trên Redis chặn 2 Pod xử lý trùng đồng thời (`409002`, xóa ngay khi xong); SHA-256 hash payload phát hiện replay ($\le 50\text{ms}$) hoặc sai lệch nội dung (`409001`); tự động fallback xuống DB khi Redis gặp sự cố.
+11. **Bảo vệ Dữ liệu Cá nhân & Không Lưu Trữ CVV (Privacy Compliance & Zero Plaintext CVV):** Tuân thủ Nghị định 13/2023/NĐ-CP & PCI: Masking CCCD (`012345****01`), Masking PAN thẻ (`4111-22XX-XXXX-3344`), cấm lưu trữ và cấm trả về CVV/PIN, tắt in payload ra log (`setIncludePayload(false)`).
+12. **Kiểm thử Kiến trúc Tự động & Liên tục (Automated Architecture Fitness Testing via ArchUnit):** Toàn bộ quy tắc kiến trúc được kiểm tra tự động qua bài test `ArchitectureFitnessArchUnitTest` trong CI/CD build.
+
+---
+
+### Hạ tầng Công nghệ
+
 - **Ngôn ngữ & Framework:** Java 21 LTS, Spring Boot 4.1.0 (Spring Framework 7), Jackson 3 (`tools.jackson.*`).
-- **Mô hình Kiến trúc:** Modular Monolith chia theo Bounded Contexts:
+- **Mô hình Bounded Contexts:**
   - `com.hieu.corebank.account`: Aggregate tài khoản, quản lý Holds và sổ cái, Event Sourcing.
   - `com.hieu.corebank.transfer`: Aggregate chuyển tiền, Saga Orchestrator, Tự phục hồi (`SagaRecoveryJob`).
   - `com.hieu.corebank.card`: Quản lý phát hành thẻ, che mờ thông tin PAN (Zero CVV).
@@ -200,7 +272,7 @@ Lấy danh sách các lệnh chuyển tiền liên quan đến tài khoản.
   - `query`: Pod đọc, kết nối Read Replica DB, phục vụ truy vấn sao kê/số dư, co giãn tự động theo HPA (3-20 Pods).
   - `all`: Mặc định cho môi trường local/docker-compose, kích hoạt đầy đủ cả Command và Query.
 - **Database:** Oracle Database 23c Free. Quản lý schema bằng Flyway (`V1__init_schema.sql`).
-- **Event-Driven & Outbox:** Transactional Outbox Pattern đẩy integration events (`TransferCompletedEventDTO`, `TransferFailedEventDTO`) sang Apache Kafka topic `bank.transfers.events`.
+- **Event-Driven & Outbox:** Transactional Outbox Pattern đẩy integration events sang Apache Kafka topic `bank.transfers.events`.
 
 ---
 

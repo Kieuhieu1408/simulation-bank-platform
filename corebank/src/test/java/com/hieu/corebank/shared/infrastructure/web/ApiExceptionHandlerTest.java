@@ -4,6 +4,7 @@ import com.hieu.common.exception.ApiErrorResponse;
 import com.hieu.corebank.shared.domain.BusinessException;
 import com.hieu.corebank.shared.domain.ConflictException;
 import com.hieu.corebank.shared.domain.DomainException;
+import com.hieu.corebank.shared.domain.InProgressConflictException;
 import com.hieu.corebank.shared.domain.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,7 +50,7 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("ConflictException maps to HTTP 409 with numeric error code")
+    @DisplayName("ConflictException maps to HTTP 409 with numeric error code 409001")
     void testConflictExceptionMapsToConflict() {
         ConflictException ex = new ConflictException("Idempotency conflict");
         ResponseEntity<ApiErrorResponse> response = handler.conflict(ex);
@@ -58,6 +59,18 @@ class ApiExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().code()).isEqualTo("409001");
         assertThat(response.getBody().message()).isEqualTo("Idempotency conflict");
+    }
+
+    @Test
+    @DisplayName("InProgressConflictException maps to HTTP 409 with distinct error code 409002")
+    void testInProgressConflictExceptionMapsTo409002() {
+        InProgressConflictException ex = new InProgressConflictException("Transfer is currently being processed");
+        ResponseEntity<ApiErrorResponse> response = handler.inProgressConflict(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("409002");
+        assertThat(response.getBody().message()).isEqualTo("Transfer is currently being processed");
     }
 
     @Test

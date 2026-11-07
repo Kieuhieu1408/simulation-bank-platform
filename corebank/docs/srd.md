@@ -18,6 +18,7 @@
 - **Serialization:** Jackson 3 (`tools.jackson.*`) tương thích đồng bộ với Boot 4.1.0
 - **Kiến trúc:** Domain-Driven Design (DDD), Clean Architecture, CQRS (Command Query Responsibility Segregation), Event Sourcing, Saga Orchestration
 - **Cơ sở dữ liệu:** Oracle Database 23c Free / 19c Enterprise (JDBC Thin, HikariCP Connection Pool)
+- **Distributed Cache & Lock:** Redis (Spring Data Redis / Lettuce) — L2 RBAC Permission Cache + Atomic Lua In-Flight Idempotency Lock
 - **Message Broker:** Apache Kafka 7.5+ kết hợp Transactional Outbox Pattern
 - **Bảo mật:** Spring Security, OAuth2 Resource Server, AOP Security (`@CoreBankAuthorization`), Tuân thủ Nghị định 13/2023/NĐ-CP
 - **Kiểm thử Kiến trúc & Tự động:** ArchUnit 1.3.0, Testcontainers Oracle, JUnit 5, AssertJ
@@ -28,56 +29,116 @@
 ```text
 corebank/src/main/java/com/hieu/corebank/
 ├── CorebankApplication.java
-├── shared/                          # Shared Kernel
-│   ├── domain/                      # AggregateRoot, DomainEvent, DomainException, Money, Currency, NationalId, CardNumber
-│   ├── application/                 # DomainEventPublisher (port), IntegrationEventPublisher (port)
+├── shared/                          # Shared Kernel (Dùng chung 1 chiều)
+│   ├── domain/                      # AggregateRoot, DomainEvent, DomainException, BusinessException,
+│   │                                # ConflictException, InProgressConflictException,
+│   │                                # Money, Currency, NationalId, CardNumber, AccountId, AccountNumber, TransferId
+│   ├── application/                 # DomainEventPublisher (port), IntegrationEventPublisher (port), IntegrationEventContributor
 │   ├── constant/                    # ProfileConstants (COMMAND, QUERY, ALL)
 │   └── infrastructure/
 │       ├── eventsourcing/           # EventStore<T>, SnapshotStore, EventSerializer, DomainEventRecord
-│       ├── outbox/                  # OutboxRecorder adapter
+│       ├── outbox/                  # OutboxRecorder, OutboxIntegrationEventPublisher
 │       └── web/                     # BaseController, ApiExceptionHandler, RequestLoggingConfig
-├── account/                         # BC: account (Core Subdomain)
-│   ├── domain/                      # Account (aggregate root), Hold (entity), AccountId, AccountNumber, AccountStatus
+├── account/                         # BC: account (Core Subdomain - Sổ cái)
+│   ├── domain/                      # AccountAggregate, Hold, HoldStatus, AccountRepository, AccountNumberGenerator
+│   │   └── event/                   # AccountCreatedEvent, FundsReservedEvent, FundsCreditedEvent, ...
 │   ├── application/
-│   │   ├── command/                 # AccountHandler (OpenAccount, ReserveFunds, CreditFunds, Settle, Release)
-│   │   ├── query/                   # Query handlers qua RequestDTOs (AccountGet, AccountsByCif, AccountBalance, TransactionHistory)
-│   │   └── port/                    # CustomerDirectory
+│   │   ├── command/                 # AccountHandler (OpenAccount, Reserve, Credit, Settle, Release)
+│   │   ├── query/                   # GetAccountByIdQueryHandler, GetAccountBalanceQueryHandler, GetAccountsByCifQueryHandler
+│   │   ├── port/                    # CustomerDirectory, AccountQueryService
+│   │   └── event/                   # AccountIntegrationEventContributor
 │   ├── infrastructure/
 │   │   ├── persistence/             # EventSourcedAccountRepository, SequenceAccountNumberGenerator
-│   │   ├── projection/              # AccountProjector, AccountView, TransactionHistoryView
-│   │   └── customer/                # LocalCustomerDirectory (adapter)
-│   └── api/                         # AccountController(+Impl), request/response DTOs
-├── transfer/                        # BC: transfer (Core Subdomain)
-│   ├── domain/                      # Transfer (aggregate root), TransferId, TransferStatus, TransferRepository (port)
+│   │   ├── projection/              # AccountProjector, LocalAccountQueryService, AccountView, TransactionHistoryView
+│   │   └── customer/                # LocalCustomerDirectory (adapter gọi CustomerRepository)
+│   └── api/                         # AccountController(+Impl), DTOs (Request / Response)
+├── transfer/                        # BC: transfer (Core Subdomain - Saga Chuyển tiền)
+│   ├── domain/                      # Transfer, TransferStatus, TransferRepository
+│   │   └── event/                   # TransferInitiatedEvent, TransferCompletedEvent, ...
 │   ├── application/
-│   │   ├── command/                 # TransferHandler (Idempotency, Hash Verification & Bounded Latency)
-│   │   ├── saga/                    # TransferSaga (orchestrator), SagaRecoveryJob, SagaMetricsCollector
-│   │   ├── query/                   # GetTransferByIdQueryHandler, GetTransferHistoryQueryHandler (RequestDTOs)
-│   │   └── port/                    # AccountGateway, StuckTransferQueryPort
+│   │   ├── command/                 # TransferHandler (Idempotency UUID v3, Hash SHA-256, Bounded Latency)
+│   │   ├── saga/                    # TransferSaga, SagaRecoveryJob, SagaMetricsCollector
+│   │   ├── query/                   # GetTransferByIdQueryHandler, GetTransferHistoryQueryHandler
+│   │   ├── port/                    # AccountGateway, TransferIdempotencyLockPort, TransferQueryPort, StuckTransferQueryPort
+│   │   └── event/                   # TransferIntegrationEventContributor
 │   ├── infrastructure/
 │   │   ├── persistence/             # EventSourcedTransferRepository
-│   │   ├── projection/              # TransferView, TransferProjector, StuckTransferQueryAdapter
-│   │   └── account/                 # InProcessAccountGateway (adapter gọi AccountHandler)
-│   └── api/                         # TransferController(+Impl), TransferRequestDTO, TransferResponseDTO
-├── card/                            # BC: card (Supporting Subdomain)
-│   ├── domain/                      # BankCard, CardId, CardNumber, CardStatus
+│   │   ├── idempotency/             # RedisTransferIdempotencyLockAdapter (Atomic Lua In-Flight Lock)
+│   │   ├── projection/              # TransferProjector, TransferQueryAdapter, StuckTransferQueryAdapter, TransferView
+│   │   ├── account/                 # InProcessAccountGateway, AccountLockManager
+│   │   └── config/                  # TransferConfig
+│   └── api/                         # TransferController(+Impl), DTOs (TransferRequestDTO, TransferResponseDTO)
+├── card/                            # BC: card (Supporting Subdomain - Quản lý Thẻ)
+│   ├── domain/                      # BankCard, CardRepository
 │   ├── application/
 │   │   ├── command/                 # CardHandler (IssueCard)
-│   │   └── query/                   # Query handlers qua RequestDTOs (CardGet, CardsByCif)
-│   ├── infrastructure/              # JpaBankCard, CardRepository, CardMapper
-│   └── api/                         # CardController(+Impl), DTOs (Zero CVV returned)
-├── customer/                        # BC: customer (Supporting Subdomain)
-│   ├── domain/                      # Customer, NationalId, SequenceCifGenerator, CifGenerator
+│   │   ├── query/                   # GetCardByIdQueryHandler, GetCardsByCifQueryHandler
+│   │   └── port/                    # AccountDirectory
+│   ├── infrastructure/
+│   │   ├── persistence/             # CardEntity (JPA), CardJpaRepository, JpaCardRepositoryAdapter
+│   │   └── account/                 # LocalAccountDirectory (adapter gọi AccountQueryService)
+│   └── api/                         # CardController(+Impl), DTOs (PAN Masking, Zero CVV)
+├── customer/                        # BC: customer (Supporting Subdomain - Quản lý CIF)
+│   ├── domain/                      # Customer, CustomerRepository, CifGenerator
 │   ├── application/
 │   │   ├── command/                 # CustomerHandler (CreateCustomer)
-│   │   └── query/                   # GetCustomerQueryHandler (CustomerGetRequestDTO)
-│   ├── infrastructure/              # JpaCustomer, CustomerRepository, SequenceCifGenerator
-│   └── api/                         # CustomerController(+Impl), DTOs (Masked CCCD)
-└── access/                          # BC: access (Generic Subdomain)
-    ├── domain/                      # Role, Permission, User
-    ├── infrastructure/              # RoleRepository, UserRepository
-    └── security/                    # CoreBankAuthorizationAspect, PermissionCacheService
-```
+│   │   └── query/                   # GetCustomerQueryHandler
+│   ├── infrastructure/
+│   │   └── persistence/             # CustomerEntity (JPA), CustomerJpaRepository, JpaCustomerRepositoryAdapter, SequenceCifGenerator
+│   └── api/                         # CustomerController(+Impl), DTOs (CCCD Masking)
+└── access/                          # BC: access (Generic Subdomain - Phân quyền Nội bộ)
+    ├── infrastructure/
+    │   └── persistence/             # RoleEntity, PermissionEntity, UserEntity, JpaRepositories
+    └── security/                    # @CoreBankAuthorization, CoreBankAuthorizationAspect, PermissionCacheService
+
+---
+
+### 1.4. Bảng Ánh xạ Phân tầng Clean Architecture & DDD (CA/DDD Package Mapping)
+
+Mọi package trong hệ thống đều tương ứng chính xác với một tầng trong Clean Architecture và tuân thủ các quy tắc ràng buộc nghiêm ngặt:
+
+| Tầng CA / DDD | Package Cấu trúc | Thành phần Mã nguồn Điển hình | Trách nhiệm Nghiệp vụ / Kỹ thuật | Quy tắc Ràng buộc (ArchUnit Rules) |
+|---|---|---|---|---|
+| **Domain** | `com.hieu.corebank.<bc>.domain`<br/>`com.hieu.corebank.shared.domain` | `AccountAggregate`, `Transfer`, `Customer`, `Hold`, `Money`, `Currency`, `NationalId`, `CardNumber` | Nắm giữ Invariants nghiệp vụ, logic thay đổi trạng thái, phương trình kế toán kép. | **Thuần khiết 100% POJO**. Cấm phụ thuộc Spring, JPA, Jackson (`rule1`, `rule1a-c`). |
+| **Application** | `com.hieu.corebank.<bc>.application`<br/>(command, query, saga, port) | `AccountHandler`, `TransferHandler`, `TransferSaga`, `SagaRecoveryJob`, `AccountGateway` | Thực thi Use Cases, điều phối quy trình Saga, kiểm tra Cấp 2 (Stateful/Idempotency), định nghĩa Ports. | **Độc lập Hạ tầng**. Không phụ thuộc `infrastructure` hay `api` Controllers (`rule2`). |
+| **Infrastructure** | `com.hieu.corebank.<bc>.infrastructure`<br/>(persistence, projection, adapters) | `EventSourcedAccountRepository`, `AccountProjector`, `InProcessAccountGateway`, `EventStore<T>` | Hiện thực Ports (DIP), tương tác DB Oracle, quản lý Event Store, Snapshot, Kafka Outbox, Projectors. | Repositories/Adapters chỉ nằm trong `infrastructure`/`persistence` (`rule5`). |
+| **API / Presentation** | `com.hieu.corebank.<bc>.api`<br/>(dto, impl) | `AccountControllerImpl`, `TransferControllerImpl`, `ApiExceptionHandler`, Request/Response DTOs | Inbound REST endpoints, chuyển đổi DTO sang Command, đón và chuẩn hóa HTTP Response, che mờ PII. | Toàn bộ `@RestController` chỉ được phép nằm trong package `..api..` (`rule4`). |
+| **Shared Kernel** | `com.hieu.corebank.shared` | `AggregateRoot<ID>`, `DomainEvent`, `Money`, `Currency`, `EventStore`, `ProfileConstants` | Cung cấp kiểu dữ liệu và hạ tầng dùng chung cho toàn bộ các Bounded Context. | **Phụ thuộc 1 chiều**. Tuyệt đối không import bất kỳ Bounded Context con nào (`rule6`). |
+
+---
+
+### 1.5. Ma trận Phụ thuộc giữa các Tầng & Bounded Contexts (Dependency Matrix)
+
+Bảng ma trận thể hiện tính hợp lệ của quan hệ phụ thuộc giữa các package trong mã nguồn (được kiểm chứng tự động bởi `ArchitectureFitnessArchUnitTest`):
+
+| Package Gọi \ Package Được Gọi | `shared.domain` | `<bc>.domain` | `<bc>.application` | `<bc>.infrastructure` | `<bc>.api` | Khác BC Context |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **`shared.domain`** | — | ❌ CẤM | ❌ CẤM | ❌ CẤM | ❌ CẤM | ❌ CẤM (`rule6`) |
+| **`shared.infrastructure`** | ✅ HỢP LỆ | ❌ CẤM | ❌ CẤM | — | ❌ CẤM | ❌ CẤM (`rule6`) |
+| **`<bc>.domain`** | ✅ HỢP LỆ | — | ❌ CẤM | ❌ CẤM | ❌ CẤM | ❌ CẤM (`rule1`) |
+| **`<bc>.application`** | ✅ HỢP LỆ | ✅ HỢP LỆ | — | ❌ CẤM (`rule2`) | ❌ CẤM (`rule2`) | ❌ CẤM |
+| **`<bc>.infrastructure`** | ✅ HỢP LỆ | ✅ HỢP LỆ | ✅ HỢP LỆ (Port) | — | ❌ CẤM | ❌ CẤM (`rule3`, `rule3b`, `rule3c`) |
+| **`<bc>.api`** | ✅ HỢP LỆ | ❌ HẠN CHẾ | ✅ HỢP LỆ (Use Case) | ❌ CẤM | — | ❌ CẤM |
+| **Liên Bounded Context** | ✅ HỢP LỆ | ❌ CẤM (`rule3b`) | ✅ Qua Port/Adapter | ❌ CẤM (`rule3`, `rule3b`) | ❌ CẤM | — |
+
+*Ghi chú:*
+- Giao tiếp giữa 2 Bounded Context bất kỳ (ví dụ `transfer` gọi `account`): Bắt buộc thông qua Outbound Port tại `transfer.application.port.AccountGateway` $\rightarrow$ Adapter `transfer.infrastructure.account.InProcessAccountGateway` $\rightarrow$ gọi tới `account.application.command.AccountHandler`. Cấm gọi trực tiếp giữa 2 tầng `domain` hoặc giữa 2 tầng `infrastructure`.
+
+---
+
+### 1.6. Danh mục Kiểm thử Ràng buộc Kiến trúc (ArchUnit Rules Reference)
+
+Bộ bài kiểm thử `ArchitectureFitnessArchUnitTest` mã hóa 100% các nguyên tắc kiến trúc thành assertions tự động trong CI/CD:
+
+1. **`rule1_domainMustBePure`**: Quét toàn bộ package `..domain..` (ngoại trừ các record kết thúc bằng `Record`), đảm bảo không phụ thuộc vào `org.springframework..`, `jakarta.persistence..`, `tools.jackson..`, `com.fasterxml.jackson..`.
+2. **`rule1a_accountDomainMustBePureStrict`**, **`rule1b_sharedDomainMustBePureStrict`**, **`rule1c_transferDomainMustBePureStrict`**: Kiểm tra nghiêm ngặt tính thuần khiết 100% của các package domain cốt lõi.
+3. **`rule2_applicationShouldNotDependOnInfrastructureOrApi`**: Tầng `application` không được import `infrastructure` hay `api` (ngoại trừ DTOs phục vụ Request/Response).
+4. **`rule3_noDirectCrossBcInfrastructureCoupling`**: Context `account` không được phụ thuộc trực tiếp vào `customer.infrastructure` hay `card.infrastructure`.
+5. **`rule3b_transferDoesNotDependOnAccountDomainOrInfrastructureStrict`**: Context `transfer` không được phụ thuộc vào `account.domain` hay `account.infrastructure`.
+6. **`rule3c_cardDoesNotDependOnAccountDomainOrInfrastructureStrict`**: Context `card` không được phụ thuộc vào `account.domain` hay `account.infrastructure`.
+7. **`rule4_controllersMustResideInApiPackage`**: Toàn bộ class mang annotation `@RestController` bắt buộc phải nằm trong package `..api..`.
+8. **`rule5_repositoriesMustResideInInfrastructure`**: Mọi interface kết thúc bằng `Repository` phải nằm trong `infrastructure`, `persistence` hoặc `domain` port.
+9. **`rule6_sharedKernelMustNotDependOnBoundedContextsStrict`**: Package `shared` không được phụ thuộc vào bất kỳ Bounded Context cụ thể nào (`account`, `transfer`, `card`, `customer`, `access`).
 
 ---
 
@@ -433,15 +494,26 @@ Tiếp nhận lệnh chuyển tiền nội bộ qua Saga. Hỗ trợ Idempotency
   ```
   *(Giải phóng kết nối cho client không bị treo; Saga tiếp tục hoàn tất ngầm trong nền và đẩy kết quả sang Kafka).*
 
-- **Kịch bản 3: Gửi lại cùng `idempotencyKey` nhưng sai lệch payload $\rightarrow$ Response 409 Conflict:**
+- **Kịch bản 3a: Gửi lại cùng `idempotencyKey` nhưng sai lệch payload $\rightarrow$ Response 409 Conflict (`409001`):**
   ```json
   {
-    "status": 409,
-    "errorCode": "IDEMPOTENCY_CONFLICT",
-    "message": "Idempotency key đã được sử dụng với thông tin giao dịch khác",
-    "timestamp": "2026-10-10T10:18:01Z"
+    "code": "409001",
+    "message": "Idempotency key conflict: request payload differs from previous request",
+    "correlationId": "corr-9b1d-3b7d",
+    "details": []
   }
   ```
+
+- **Kịch bản 3b: Nhiều Pod nhận đồng thời cùng `idempotencyKey` (khớp payload) khi giao dịch đang xử lý (`IN_FLIGHT`) $\rightarrow$ Response 409 Conflict (`409002`):**
+  ```json
+  {
+    "code": "409002",
+    "message": "Transfer with this idempotency key is currently being processed",
+    "correlationId": "corr-9b1d-3b7d",
+    "details": []
+  }
+  ```
+  *(Giúp `money-bank` phân biệt rõ giao dịch đang thực thi dở dang với lỗi gian lận/sai lệch payload `409001`; khóa Redis được xóa tự động ngay khi luồng Saga kết thúc).*
 
 - **Kịch bản 4: Thiếu số dư hoặc Tài khoản bị khóa $\rightarrow$ Response 422 Unprocessable Entity:**
   ```json
@@ -468,12 +540,16 @@ Tiếp nhận lệnh chuyển tiền nội bộ qua Saga. Hỗ trợ Idempotency
    - Tính toán tất định:
      ```java
      String transferId = UUID.nameUUIDFromBytes((request.getSourceAccountId() + ":" + request.getIdempotencyKey()).getBytes(UTF_8)).toString();
-     String requestHash = Sha256.hash(request.getSourceAccountId() + "|" + request.getDestinationAccountId() + "|" + request.getAmount() + "|" + request.getCurrency());
+     String requestHash = computeRequestHash(request);
      ```
-   - Tra cứu trong `transfer_view`:
-     - Nếu đã có và khớp `requestHash` $\rightarrow$ Replay kết quả trong $\le 50\text{ ms}$.
-     - Nếu đã có nhưng khác `requestHash` $\rightarrow$ Ném ngoại lệ HTTP `409 Conflict`.
-     - Nếu chưa có $\rightarrow$ Lưu `transfer_view` ban đầu và kích hoạt Saga.
+   - Tra cứu nhanh trong `transfer_view` (qua `TransferQueryPort`):
+     - Nếu đã có nhưng khác `requestHash` $\rightarrow$ Ném ngoại lệ `ConflictException` (`HTTP 409` — mã `409001`).
+     - Nếu đã ở trạng thái kết thúc (`COMPLETED` / `FAILED`) và khớp `requestHash` $\rightarrow$ Replay kết quả ngay trong $\le 50\text{ ms}$ (0 Redis hops).
+   - Cấp khóa phân tán In-Flight trên Redis qua `TransferIdempotencyLockPort` (`RedisTransferIdempotencyLockAdapter`):
+     - Atomic Lua Script đặt `idem:transfer:lock:{transferId}` = `{lockToken}:{requestHash}` với TTL cầu chì `30s` (`corebank.transfer.idempotency-lock-ttl-seconds: 30`).
+     - Nếu đang bị Pod khác giữ khóa: lệch `requestHash` $\rightarrow$ `409001`; khớp `requestHash` $\rightarrow$ Ném `InProgressConflictException` (`HTTP 409` — mã `409002`).
+     - Nếu Redis mất kết nối $\rightarrow$ Tự động fallback an toàn xuống chốt chặn Database.
+     - Ngay khi luồng thực thi `TransferSaga` kết thúc (kể cả khi quá `sync-timeout` chuyển sang chạy ngầm), Lua Script đối chiếu `lockToken` và xóa khóa ngay lập tức (`TTL = 0` sau khi xong, không tồn đọng RAM).
 3. **Cấp 3 (Aggregate Root Invariant):**
    - `Account.reserve(transferId, amount)`: Kiểm tra `status == ACTIVE`, `availableBalance >= amount`. Nếu đã có `Hold` cùng `transferId` $\rightarrow$ no-op (idempotent).
    - `Account.credit(transferId, amount)`: Nếu `creditedTransfers` đã có `transferId` $\rightarrow$ no-op.

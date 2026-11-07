@@ -4,7 +4,7 @@ import com.hieu.common.cqrs.QueryHandler;
 import com.hieu.corebank.shared.constant.ProfileConstants;
 import com.hieu.corebank.transfer.api.dto.request.TransferHistoryRequestDTO;
 import com.hieu.corebank.transfer.api.dto.response.TransferResponseDTO;
-import com.hieu.corebank.transfer.infrastructure.projection.TransferViewRepository;
+import com.hieu.corebank.transfer.application.port.TransferQueryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -17,13 +17,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class GetTransferHistoryQueryHandler implements QueryHandler<TransferHistoryRequestDTO, List<TransferResponseDTO>> {
 
-    private final TransferViewRepository transferViewRepository;
+    private final TransferQueryPort transferQueryPort;
 
     @Override
     @Transactional(readOnly = true)
     public List<TransferResponseDTO> handle(TransferHistoryRequestDTO query) {
-        return transferViewRepository
-                .findBySourceAccountIdOrDestinationAccountIdOrderByCreatedAtDesc(query.getAccountId(), query.getAccountId())
+        return transferQueryPort
+                .findHistoryByAccountId(query.getAccountId())
                 .stream()
                 .map(TransferResponseDTO::from)
                 .toList();

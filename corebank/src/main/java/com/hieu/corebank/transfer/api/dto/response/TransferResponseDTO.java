@@ -1,7 +1,7 @@
 package com.hieu.corebank.transfer.api.dto.response;
 
 import com.hieu.common.constant.TransactionStatus;
-import com.hieu.corebank.transfer.infrastructure.projection.TransferView;
+import com.hieu.corebank.transfer.application.port.TransferQueryPort;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,9 +24,9 @@ public class TransferResponseDTO {
     private String description;
     private Instant createdAt;
 
-    public static TransferResponseDTO from(TransferView view) {
+    public static TransferResponseDTO from(TransferQueryPort.TransferReadModel view) {
         TransactionStatus status;
-        String rawStatus = view.getStatus();
+        String rawStatus = view.status();
         if ("COMPLETED".equalsIgnoreCase(rawStatus) || "SUCCESS".equalsIgnoreCase(rawStatus)) {
             status = TransactionStatus.SUCCESS;
         } else if ("FAILED".equalsIgnoreCase(rawStatus)) {
@@ -35,14 +35,14 @@ public class TransferResponseDTO {
             status = TransactionStatus.PENDING;
         }
         return TransferResponseDTO.builder()
-                .transactionId(view.getTransferId())
+                .transactionId(view.transferId())
                 .status(status)
-                .sourceAccountId(view.getSourceAccountId())
-                .destinationAccountId(view.getDestinationAccountId())
-                .amount(view.getAmount())
-                .currency(view.getCurrency())
-                .description(view.getDescription())
-                .createdAt(view.getCreatedAt())
+                .sourceAccountId(view.sourceAccountId())
+                .destinationAccountId(view.destinationAccountId())
+                .amount(view.amount())
+                .currency(view.currency())
+                .description(view.description())
+                .createdAt(view.createdAt())
                 .build();
     }
 }
